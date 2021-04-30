@@ -4,19 +4,18 @@ Algoritmos multipath encontrados:
 
 		1. ECMP
 
-		2. Hedera
-		
-			https://github.com/vishalshubham/Multipath-Hedera-system-in-Floodlight-controller/tree/5e71970f4025201f6670bbe8bd56f76f4b30e062/src/main/java/net/floodlightcontroller/hedera
-
-			https://github.com/strategist333/hedera
+		2. Hedera 
+			
+			[Git 1](https://github.com/vishalshubham/Multipath-Hedera-system-in-Floodlight-controller/tree/5e71970f4025201f6670bbe8bd56f76f4b30e062/src/main/java/net/floodlightcontroller/hedera)
+			[Git 2](https://github.com/strategist333/hedera)
 
 		3. Olimps
 			
-			https://github.com/IstanbulBoy/floodlight-olimps
+			[Git 1](https://github.com/IstanbulBoy/floodlight-olimps)
 
 		4. MPTCP - floodlight
 			
-			https://github.com/zsavvas/MPTCP-aware-SDN
+			[Git 1](https://github.com/zsavvas/MPTCP-aware-SDN)
 
 
 <h3> CONFIG </h3>
