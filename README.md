@@ -22,7 +22,7 @@ Algoritmos multipath encontrados:
 <h3> CONFIG </h3>
 
 
-> $sudo apt install snap #gerenciador de pacotes
+>$sudo apt install snap #gerenciador de pacotes
 
 >$sudo apt-get install xorg
 
@@ -43,8 +43,6 @@ Algoritmos multipath encontrados:
 >$ sudo apt-get update
 
 >$ sudo apt-get install openjdk-8-jdk
-
-># $ sudo apt install openjdk-11-jre
 
 >$ sudo update-alternatives --config java     # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
 
