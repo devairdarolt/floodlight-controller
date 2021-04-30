@@ -1,51 +1,139 @@
-Floodlight OpenFlow Controller (OSS)
-====================================
 
-Attention!
-----------
+##########################################################################################################################
+												ANOTAÇÕES
+##########################################################################################################################
+	Algoritmos multipath encontrados:
 
-As of August 2018, the Floodlight mailing list has moved to [floodlight@groups.io](mailto:floodlight@groups.io)! Archives and the new group home page [can be found here](https://groups.io/g/floodlight). Please see [Documentation and Support](#Documentation-and-Support) below for up-to-date support information.
+	1. ECMP
 
-Build Status
-------------
+	2. Hedera
+		https://github.com/vishalshubham/Multipath-Hedera-system-in-Floodlight-controller/tree
+		/5e71970f4025201f6670bbe8bd56f76f4b30e062/src/main/java/net/floodlightcontroller/hedera
 
-[![Build Status](https://travis-ci.org/floodlight/floodlight.svg?branch=master)](https://travis-ci.org/floodlight/floodlight)
+		https://github.com/strategist333/hedera
 
-What is Floodlight?
--------------------
+	3. Olimps
+		https://github.com/IstanbulBoy/floodlight-olimps
 
-Floodlight is the leading open source OpenFlow controller. It is [supported by a community of developers](https://floodlight.atlassian.net/wiki/display/floodlightcontroller/Authors+and+Contributors), including a number of engineers from [Big Switch Networks](http://www.bigswitch.com/).
+	4. MPTCP - floodlight
+		https://github.com/zsavvas/MPTCP-aware-SDN
 
-What is OpenFlow?
------------------
 
-OpenFlow is a open standard managed by Open Networking Foundation. It specifies a protocol by which a remote controller can modify the behavior of networking devices through a well-defined “forwarding instruction set”. Floodlight is designed to work with the growing number of switches, routers, virtual switches, and access points that support the OpenFlow standard.
+##########################################################################################################################
+												CONFIG
+##########################################################################################################################
 
-Getting Started
----------------
+	sudo apt install snap #gerenciador de pacotes
 
-The quickest way to use Floodlight is to start with our [pre-built VM](https://floodlight.atlassian.net/wiki/spaces/floodlightcontroller/pages/8650780/Floodlight+VM), which includes the controller, IDE, and everything you need to use Floodlight and/or start developing. You can also deploy and develop with Floodlight [in your own environment](https://floodlight.atlassian.net/wiki/spaces/floodlightcontroller/pages/1343544/Installation+Guide).
+	sudo apt-get install xorg
+	sudo apt-get install openbox
+	sudo reboot
+	xrandr --output DP-2-1 --mode 2560x1440
 
-If you are a developer and are looking for project ideas, please take a look at [our current issues](https://github.com/floodlight/floodlight/issues). They are a great way to get started developing with Floodlight and provide a concrete way in which to [give back](#Contribution)!
 
-Documentation and Support
--------------------------
+##########################################################################################################################
+										INSTALER E COMPILAR O FLOODLIGHT
+##########################################################################################################################
 
-Ready to get started using Floodlight? The [Floodlight wiki](https://floodlight.atlassian.net/wiki/spaces/floodlightcontroller/overview) contains user and developer documentation, as well as helpful tutorials from beginner to advanced.
+	
+	1.  Instalar o Java 8
+		$ sudo add-apt-repository ppa:openjdk-r/ppa
+		$ sudo apt-get update
+		$ sudo apt-get install openjdk-8-jdk
+														# $ sudo apt install openjdk-11-jre
+		$ sudo update-alternatives --config java   		# (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
+		$ sudo update-alternatives --config javac  		# (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/bin/javac")
 
-Do you have a question, comment, or a great idea you'd like to propose to the community? Please subscribe and send to our mailing list [floodlight@groups.io](mailto:floodlight@groups.io). Archives and additional content can be found on the [group homepage](https://groups.io/g/floodlight).
+	2. Instalar pacotes essenciais (atual)
+		$ sudo apt-get install build-essential ant maven python-dev eclipse
 
-Contribution
-------------
+	3. Clonar o repositório do git (master)
+		$ git clone git://github.com/floodlight/floodlight.git
+		$ cd floodlight
+		$ git pull origin master						# Caso esteja utilizando uma versão desatualizada
+		$ git submodule init
+		$ git submodule update 							# (baixa a nova interface UI)
 
-Floodlight is supported by contributions from developers like yourself. If you found and fixed something that needed attention or have added a feature, please consider giving back by [opening a pull request](https://github.com/floodlight/floodlight/pulls). We value each and every contribution, no matter how large or how small.
+		$ sudo chmod 777 .
 
-If you have found a bug or have a feature request, please send a note to [floodlight@groups.io](mailto:floodlight@groups.io) and [open a issue](https://github.com/floodlight/floodlight/issues) to track it. If you are able to give back by addressing the issue yourself, please read the above and thank you! If you are unable to contribute a solution, following these simple steps will allow someone the opportunity to do so.
+		$ sudo mkdir /var/lib/floodlight
+		$ sudo chmod 777 /var/lib/floodlight
 
-Interested in contributing but don't know where to start? Check out and consider addressing any of [our current issues](https://github.com/floodlight/floodlight/issues).
+	4 Compilar o floodlight com o Maven
+		# entrar na pasta que tem o pom.xml
+		$ mvn package -DskipTests
 
-Authors and Contributors
-------------------------
 
-Thank you to [all who have contributed](https://floodlight.atlassian.net/wiki/display/floodlightcontroller/Authors+and+Contributors) to Floodlight! Please reach out if we have missed you, so that you can be added to this growing list.
+
+	Comandos curl para o statcetrypush
+
+	5. Inserir fluxo estático
+		curl -X POST -d '{"switch":"00:00:00:00:00:00:00:01", "name":"flow-mod-1", "cookie":"0", "priority":"32768",
+		 "in_port":"1","active":"true", "actions":"output=2"}' http://192.168.1.215:8080/wm/staticentrypusher/json
+
+	6.	Get flow from switch 1
+		curl http://192.168.1.215:8080/wm/staticentrypusher/list/00:00:00:00:00:00:00:01/json
+
+	7. Get flows from all switchs
+		curl http://192.168.1.215:8080/wm/staticentrypusher/list/all/json
+
+	8. Del flow
+		curl -X DELETE -d '{"name":"flow-mod-1"}' http://192.168.1.215:8080/wm/staticentrypusher/json
+
+	9. Clear switch 1
+		curl http://192.168.1.215:8080/wm/staticentrypusher/clear/00:00:00:00:00:00:00:01/json
+		
+	10. Clear all switchs
+		curl http://192.168.1.215:8080/wm/staticentrypusher/clear/all/json
+
+	
+	UTIL.curl
+
+	1. get switches
+		curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
+
+##########################################################################################################################
+										CRIANDO UM AMBIENTE SIMPLES O MININET
+##########################################################################################################################
+
+	$ sudo mn --controller=remote,ip=192.168.1.215,port=6653		# Cria uma rede simples controlada pelo floodlight
+	
+
+	$ sudo mn --topo=tree,2 --controller=remote,ip=192.168.1.215,port=6653 --switch=ovsk,protocols=OpenFlow13
+
+	# Cria uma topologia 
+																	
+	h1 --- s1 --- s2 --- s3 --- h4
+			|			  |
+			h2 			  h3
+
+
+
+	
+	curl -s -d '{"switch": "00:00:00:00:00:00:00:01", "name":"00:00:00:00:00:00:00:01.5Mbps02-04.farp", 
+	"ether-type":"0x806", "cookie":"0", "priority":"2", "ingress-port":"1","active":"true",
+	 "actions":"output=2"}' http://192.168.1.215:8080/wm/staticflowentrypusher/json
+
+
+	$ mininet>  pingall												# Para que o controlador tenha conhecimento dos host 
+
+	$ mininet>	h2 iperf -s &										# Cria um servidor TCP em h2
+
+	$ mininet>	h1 iperf -c h2 										# Cira um cliente TCP em h1 consultando h2 (Pega a vazão 																	
+																		maxima entre h1 e h2)
+
+
+
+
+##########################################################################################################################
+												TUTORIAL MININET
+##########################################################################################################################
+
+
+
+
+
+##########################################################################################################################
+												OPENFLOW FORWARD ALGORITHM
+##########################################################################################################################
 
