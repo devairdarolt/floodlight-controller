@@ -2,31 +2,31 @@
 
 Algoritmos multipath encontrados:
 
-		1. ECMP
+1. ECMP
 
-		2. Hedera 
-			
-			[Git 1](https://github.com/vishalshubham/Multipath-Hedera-system-in-Floodlight-controller/tree/5e71970f4025201f6670bbe8bd56f76f4b30e062/src/main/java/net/floodlightcontroller/hedera)
-			[Git 2](https://github.com/strategist333/hedera)
+2. Hedera 
+	
+	[Git 1](https://github.com/vishalshubham/Multipath-Hedera-system-in-Floodlight-controller/tree/5e71970f4025201f6670bbe8bd56f76f4b30e062/src/main/java/net/floodlightcontroller/hedera)
+	[Git 2](https://github.com/strategist333/hedera)
 
-		3. Olimps
+3. Olimps
 			
-			[Git 1](https://github.com/IstanbulBoy/floodlight-olimps)
+	[Git 1](https://github.com/IstanbulBoy/floodlight-olimps)
 
-		4. MPTCP - floodlight
+4. MPTCP - floodlight
 			
-			[Git 1](https://github.com/zsavvas/MPTCP-aware-SDN)
+	[Git 1](https://github.com/zsavvas/MPTCP-aware-SDN)
 
 
 <h3> CONFIG </h3>
 
 
-		$sudo apt install snap #gerenciador de pacotes
+> $sudo apt install snap #gerenciador de pacotes
 
-		$sudo apt-get install xorg
-		$sudo apt-get install openbox
-		$sudo reboot
-		$xrandr --output DP-2-1 --mode 2560x1440
+>$sudo apt-get install xorg
+>$sudo apt-get install openbox
+>$sudo reboot
+>$xrandr --output DP-2-1 --mode 2560x1440
 
 
 <h3>INSTALER E COMPILAR O FLOODLIGHT</h3>
