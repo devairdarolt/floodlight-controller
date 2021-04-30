@@ -1,7 +1,5 @@
+<h2> ANOTAÇÕES </h2>
 
-##########################################################################################################################
-												ANOTAÇÕES
-##########################################################################################################################
 	Algoritmos multipath encontrados:
 
 	1. ECMP
@@ -19,9 +17,8 @@
 		https://github.com/zsavvas/MPTCP-aware-SDN
 
 
-##########################################################################################################################
-												CONFIG
-##########################################################################################################################
+<h2> CONFIG </h2>
+
 
 	sudo apt install snap #gerenciador de pacotes
 
@@ -31,28 +28,26 @@
 	xrandr --output DP-2-1 --mode 2560x1440
 
 
-##########################################################################################################################
-										INSTALER E COMPILAR O FLOODLIGHT
-##########################################################################################################################
+<h2>INSTALER E COMPILAR O FLOODLIGHT</h2>
 
 	
 	1.  Instalar o Java 8
 		$ sudo add-apt-repository ppa:openjdk-r/ppa
 		$ sudo apt-get update
 		$ sudo apt-get install openjdk-8-jdk
-														# $ sudo apt install openjdk-11-jre
-		$ sudo update-alternatives --config java   		# (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
-		$ sudo update-alternatives --config javac  		# (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/bin/javac")
+                                                             # $ sudo apt install openjdk-11-jre
+		$ sudo update-alternatives --config java     # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
+		$ sudo update-alternatives --config javac    # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/bin/javac")
 
 	2. Instalar pacotes essenciais (atual)
 		$ sudo apt-get install build-essential ant maven python-dev eclipse
 
 	3. Clonar o repositório do git (master)
 		$ git clone git://github.com/floodlight/floodlight.git
-		$ cd floodlight
-		$ git pull origin master						# Caso esteja utilizando uma versão desatualizada
+		$ cd floodlight                               
+		$ git pull origin master                     # Caso esteja utilizando uma versão desatualizada
 		$ git submodule init
-		$ git submodule update 							# (baixa a nova interface UI)
+		$ git submodule update                       # (baixa a nova interface UI)
 
 		$ sudo chmod 777 .
 
@@ -92,48 +87,46 @@
 	1. get switches
 		curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
 
-##########################################################################################################################
-										CRIANDO UM AMBIENTE SIMPLES O MININET
-##########################################################################################################################
 
-	$ sudo mn --controller=remote,ip=192.168.1.215,port=6653		# Cria uma rede simples controlada pelo floodlight
-	
+<h2>CRIANDO UM AMBIENTE SIMPLES O MININET</h2>
 
-	$ sudo mn --topo=tree,2 --controller=remote,ip=192.168.1.215,port=6653 --switch=ovsk,protocols=OpenFlow13
+# Cria uma rede simples controlada pelo floodlight
+
+	$ sudo mn --controller=remote,ip=192.168.1.215,port=6653 		
 
 	# Cria uma topologia 
 																	
-	h1 --- s1 --- s2 --- s3 --- h4
-			|			  |
-			h2 			  h3
+        h1 --- s1 --- s2 --- s3 --- h5
+               |       |      |
+               h2      h3     h4
+
+# Cria uma rede em forma de arvore com 2 nós por switch de arestas
+
+	$ sudo mn --topo=tree,2 --controller=remote,ip=192.168.1.215,port=6653 --switch=ovsk,protocols=OpenFlow13
 
 
+# Comando para inserir uma regra usando o statc push
 
-	
 	curl -s -d '{"switch": "00:00:00:00:00:00:00:01", "name":"00:00:00:00:00:00:00:01.5Mbps02-04.farp", 
 	"ether-type":"0x806", "cookie":"0", "priority":"2", "ingress-port":"1","active":"true",
 	 "actions":"output=2"}' http://192.168.1.215:8080/wm/staticflowentrypusher/json
 
 
-	$ mininet>  pingall												# Para que o controlador tenha conhecimento dos host 
+# Para que o controlador tenha conhecimento dos host 
 
-	$ mininet>	h2 iperf -s &										# Cria um servidor TCP em h2
+	$ mininet>  pingall												
 
-	$ mininet>	h1 iperf -c h2 										# Cira um cliente TCP em h1 consultando h2 (Pega a vazão 																	
-																		maxima entre h1 e h2)
+# 1. Cria um servidor TCP em h2 e 2. Cria um cliente TCP em h1 (O resultado é a vazão maxima da rede)
+
+	$ mininet>	h2 iperf -s &										
+
+	$ mininet>	h1 iperf -c h2 																											
 
 
-
-
-##########################################################################################################################
-												TUTORIAL MININET
-##########################################################################################################################
-
+<h2>TUTORIAL MININET</h2>												
 
 
 
+<h2>OPENFLOW FORWARD ALGORITHM</h2>
 
-##########################################################################################################################
-												OPENFLOW FORWARD ALGORITHM
-##########################################################################################################################
 
