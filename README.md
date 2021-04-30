@@ -81,17 +81,15 @@
 		
 10. Clear all switchs
 	curl http://192.168.1.215:8080/wm/staticentrypusher/clear/all/json
-
 	
-UTIL.curl
 
-1. get switches
+11. get switches
 	curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
 
 
 <h2>CRIANDO UM AMBIENTE SIMPLES O MININET</h2>
 
-# Cria uma rede simples controlada pelo floodlight
+Cria uma rede simples controlada pelo floodlight
 
 	$ sudo mn --controller=remote,ip=192.168.1.215,port=6653 		
 
@@ -101,33 +99,33 @@ UTIL.curl
                |       |      |
                h2      h3     h4
 
-# Cria uma rede em forma de arvore com 2 nós por switch de arestas
+Cria uma rede em forma de arvore com 2 nós por switch de arestas
 
 	$ sudo mn --topo=tree,2 --controller=remote,ip=192.168.1.215,port=6653 --switch=ovsk,protocols=OpenFlow13
 
 
-# Comando para inserir uma regra usando o statc push
+Comando para inserir uma regra usando o statc push
 
 	curl -s -d '{"switch": "00:00:00:00:00:00:00:01", "name":"00:00:00:00:00:00:00:01.5Mbps02-04.farp", 
 	"ether-type":"0x806", "cookie":"0", "priority":"2", "ingress-port":"1","active":"true",
 	 "actions":"output=2"}' http://192.168.1.215:8080/wm/staticflowentrypusher/json
 
 
-# Para que o controlador tenha conhecimento dos host 
+Para que o controlador tenha conhecimento dos host 
 
 	$ mininet>  pingall												
 
-# 1. Cria um servidor TCP em h2 e 2. Cria um cliente TCP em h1 (O resultado é a vazão maxima da rede)
+1. Cria um servidor TCP em h2 e 2. Cria um cliente TCP em h1 (O resultado é a vazão maxima da rede)
+
 
 	$ mininet>	h2 iperf -s &										
-
 	$ mininet>	h1 iperf -c h2 																											
 
 
-<h2>TUTORIAL MININET</h2>												
+<h3>TUTORIAL MININET</h3>												
 
 
 
-<h2>OPENFLOW FORWARD ALGORITHM</h2>
+<h3>OPENFLOW FORWARD ALGORITHM</h3>
 
 
