@@ -1,4 +1,4 @@
-<h2> ANOTAÇÕES </h2>
+<h3> ANOTAÇÕES </h3>
 
 	Algoritmos multipath encontrados:
 
@@ -17,7 +17,7 @@
 		https://github.com/zsavvas/MPTCP-aware-SDN
 
 
-<h2> CONFIG </h2>
+<h3> CONFIG </h3>
 
 
 	sudo apt install snap #gerenciador de pacotes
@@ -28,64 +28,65 @@
 	xrandr --output DP-2-1 --mode 2560x1440
 
 
-<h2>INSTALER E COMPILAR O FLOODLIGHT</h2>
+<h3>INSTALER E COMPILAR O FLOODLIGHT</h3>
 
 	
-	1.  Instalar o Java 8
-		$ sudo add-apt-repository ppa:openjdk-r/ppa
-		$ sudo apt-get update
-		$ sudo apt-get install openjdk-8-jdk
-                                                             # $ sudo apt install openjdk-11-jre
-		$ sudo update-alternatives --config java     # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
-		$ sudo update-alternatives --config javac    # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/bin/javac")
+1.  Instalar o Java 8
 
-	2. Instalar pacotes essenciais (atual)
-		$ sudo apt-get install build-essential ant maven python-dev eclipse
+	$ sudo add-apt-repository ppa:openjdk-r/ppa
+	$ sudo apt-get update
+	$ sudo apt-get install openjdk-8-jdk
+                                                     # $ sudo apt install openjdk-11-jre
+	$ sudo update-alternatives --config java     # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java")
+	$ sudo update-alternatives --config javac    # (escolha o "/usr/lib/jvm/java-8-openjdk-amd64/bin/javac")
 
-	3. Clonar o repositório do git (master)
-		$ git clone git://github.com/floodlight/floodlight.git
-		$ cd floodlight                               
-		$ git pull origin master                     # Caso esteja utilizando uma versão desatualizada
-		$ git submodule init
-		$ git submodule update                       # (baixa a nova interface UI)
+2. Instalar pacotes essenciais (atual)
+	$ sudo apt-get install build-essential ant maven python-dev eclipse
 
-		$ sudo chmod 777 .
+3. Clonar o repositório do git (master)
+	$ git clone git://github.com/floodlight/floodlight.git
+	$ cd floodlight                               
+	$ git pull origin master                     # Caso esteja utilizando uma versão desatualizada
+	$ git submodule init
+	$ git submodule update                       # (baixa a nova interface UI)
 
-		$ sudo mkdir /var/lib/floodlight
-		$ sudo chmod 777 /var/lib/floodlight
+	$ sudo chmod 777 .
 
-	4 Compilar o floodlight com o Maven
-		# entrar na pasta que tem o pom.xml
-		$ mvn package -DskipTests
+	$ sudo mkdir /var/lib/floodlight
+	$ sudo chmod 777 /var/lib/floodlight
+
+4 Compilar o floodlight com o Maven
+	# entrar na pasta que tem o pom.xml
+	$ mvn package -DskipTests
 
 
 
-	Comandos curl para o statcetrypush
+<h3>Comandos curl para o statcetrypush</h3>
 
-	5. Inserir fluxo estático
-		curl -X POST -d '{"switch":"00:00:00:00:00:00:00:01", "name":"flow-mod-1", "cookie":"0", "priority":"32768",
-		 "in_port":"1","active":"true", "actions":"output=2"}' http://192.168.1.215:8080/wm/staticentrypusher/json
+5. Inserir fluxo estático
 
-	6.	Get flow from switch 1
-		curl http://192.168.1.215:8080/wm/staticentrypusher/list/00:00:00:00:00:00:00:01/json
+	curl -X POST -d '{"switch":"00:00:00:00:00:00:00:01", "name":"flow-mod-1", "cookie":"0", "priority":"32768","in_port":"1","active":"true", "actions":"output=2"}' http://192.168.1.215:8080/wm/staticentrypusher/json
 
-	7. Get flows from all switchs
-		curl http://192.168.1.215:8080/wm/staticentrypusher/list/all/json
+6.	Get flow from switch 1
+	curl http://192.168.1.215:8080/wm/staticentrypusher/list/00:00:00:00:00:00:00:01/json
 
-	8. Del flow
-		curl -X DELETE -d '{"name":"flow-mod-1"}' http://192.168.1.215:8080/wm/staticentrypusher/json
+7. Get flows from all switchs
+	curl http://192.168.1.215:8080/wm/staticentrypusher/list/all/json
 
-	9. Clear switch 1
-		curl http://192.168.1.215:8080/wm/staticentrypusher/clear/00:00:00:00:00:00:00:01/json
+8. Del flow
+	curl -X DELETE -d '{"name":"flow-mod-1"}' http://192.168.1.215:8080/wm/staticentrypusher/json
+
+9. Clear switch 1
+	curl http://192.168.1.215:8080/wm/staticentrypusher/clear/00:00:00:00:00:00:00:01/json
 		
-	10. Clear all switchs
-		curl http://192.168.1.215:8080/wm/staticentrypusher/clear/all/json
+10. Clear all switchs
+	curl http://192.168.1.215:8080/wm/staticentrypusher/clear/all/json
 
 	
-	UTIL.curl
+UTIL.curl
 
-	1. get switches
-		curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
+1. get switches
+	curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
 
 
 <h2>CRIANDO UM AMBIENTE SIMPLES O MININET</h2>
