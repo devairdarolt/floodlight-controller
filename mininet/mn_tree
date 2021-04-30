@@ -1,0 +1,2 @@
+#!/bin/bash
+sudo mn --controller=remote,ip=192.168.1.215,port=6653 --topo=tree,depth=3,fanout=3

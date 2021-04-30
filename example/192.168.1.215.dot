@@ -1,0 +1,8 @@
+digraph Deps {
+     n0 [ label="dpid=00:00:00:00:00:00:00:04", color="blue"];
+     n1 [ label="dpid=00:00:00:00:00:00:00:03", color="blue"];
+     n0 -> n1 [ label="src_port 4 --> dst_port 3"];
+     n2 [ label="dpid=00:00:00:00:00:00:00:02", color="blue"];
+     n3 [ label="dpid=00:00:00:00:00:00:00:01", color="blue"];
+     n2 -> n3 [ label="src_port 4 --> dst_port 3"];
+}
