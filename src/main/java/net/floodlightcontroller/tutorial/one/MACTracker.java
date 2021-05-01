@@ -4,7 +4,7 @@
  * O obejtivo dessa classe é fazer um breve tutorial de implementação das interfaces IOFMessageListener e IFloodlightProviderService 
  * 
  */
-package net.floodlightcontroller.deva;
+package net.floodlightcontroller.tutorial.one;
 
 import java.util.Collection;
 import java.util.HashSet;

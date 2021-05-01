@@ -98,6 +98,9 @@ Algoritmos multipath encontrados:
 		
 		curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
 
+12. get oacket in hyistory (tutorial.two)
+
+		curl -s http://localhost:8080/wm/pktinhistory/history/json | python -mjson.tool
 
 <h2>CRIANDO UM AMBIENTE SIMPLES O MININET</h2>
 

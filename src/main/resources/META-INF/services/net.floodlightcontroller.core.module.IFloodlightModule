@@ -30,6 +30,6 @@ net.floodlightcontroller.statistics.StatisticsCollector
 net.floodlightcontroller.routing.RoutingManager
 net.floodlightcontroller.cpanalyzer.CPAnalyzer
 net.floodlightcontroller.hasupport.HAController
-net.floodlightcontroller.deva.MACTracker
-net.floodlightcontroller.deva.DevaProcessPacketIn
-net.floodlightcontroller.pktinhistory.PktInHistory
+net.floodlightcontroller.tutorial.one.MACTracker
+net.floodlightcontroller.tutorial.one.DevaProcessPacketIn
+net.floodlightcontroller.tutorial.two.PktInHistory
