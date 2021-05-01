@@ -46,7 +46,7 @@ import net.floodlightcontroller.packet.UDP;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DevaProcessPacketIn implements IOFMessageListener, IFloodlightModule {
+public class ProcessPacketIn implements IOFMessageListener, IFloodlightModule {
 
 	
 
@@ -87,7 +87,7 @@ public class DevaProcessPacketIn implements IOFMessageListener, IFloodlightModul
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProviderService = context.getServiceImpl(IFloodlightProviderService.class);
 		listaMACs = new ConcurrentSkipListSet<String>();
-		logger = LoggerFactory.getLogger(DevaProcessPacketIn.class);
+		logger = LoggerFactory.getLogger(ProcessPacketIn.class);
 		ansi = new Ansi();
 	}
 
@@ -117,7 +117,7 @@ public class DevaProcessPacketIn implements IOFMessageListener, IFloodlightModul
 	 */
 	@Override
 	public String getName() {
-		return DevaProcessPacketIn.class.getSimpleName();
+		return ProcessPacketIn.class.getSimpleName();
 	}
 
 	/**
