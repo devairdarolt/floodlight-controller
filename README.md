@@ -148,6 +148,37 @@ Para que o controlador tenha conhecimento dos host
 
 <h3>TUTORIAL MININET</h3>												
 
+Mostra os fluxos do switch s1
+>ovs-vsctl dump-flows s1
+
+Print match flow from s1
+>dump-flows SWITCH FLOW
+
+Apaga os fluxos
+>ovs-ofctl del-flows s1
+
+Lista os qos existentes
+>ovs-vsctl list qos
+
+Remove a tabela QoS
+>sudo ovs-vsctl --all destroy QoS
+
+Remover todas as Queue
+>ovs-vsctl -- --all destroy Queue
+
+Remover Queue através do id
+>ovs-vsctl  destroy Queue uuid1 uuid2
+
+
+
+# Criando Queues para usar com o floodlight
+>ovs-vsctl -- set Port s1-eth1 qos=@newqos --                                            # Cria um qos para s1-eth1
+>--id=@newqos create QoS type=linux-htb other-config:max-rate=1000000000 queues=0=@q0 -- # Configura limite maximo para 1 GBs
+>--id=@q0 create Queue other-config:min-rate=4000000 other-config:max-rate=4000000		 # Cria uma queue de 4 Mbs --- Tudo que for colocado nessa lista terá a largura de banda limitada a 4Mbs
+
+#Exemplo
+s1   (Total:1GB, q0:100Mb, q1:5Mb)
+>ovs-vsctl -- set Port s1-eth1 qos=@newqos -- set Port s1-eth2 qos=@newqos -- --id=@newqos   create   QoS    type=linux-htb    other-config:max-rate=1000000000 queues=0=@q0,1=@q1 -- --id=@q0   create   Queue   other-config:min-rate=100000000 other-config:max-rate=100000000 -- --id=@q1 create Queue other-config:min-rate=5000000
 
 
 <h3>OPENFLOW FORWARD ALGORITHM</h3>

@@ -338,57 +338,58 @@ public class FactoryVersion implements IFloodlightModule, IOFMessageListener {
 
 			// Esses OFGroupMods são OFMessages que podem ser compostos e gravados em um
 			// switch, assim como OFFlowMods
-			ArrayList<OFGroupMod> groupModList = new ArrayList<OFGroupMod>();
+			if (!sw.getOFFactory().getVersion().equals(OFVersion.OF_15)) {
+				ArrayList<OFGroupMod> groupModList = new ArrayList<OFGroupMod>();
 
-			OFGroupAdd addGroup = swfactory.buildGroupAdd().setGroup(OFGroup.of(1)).setGroupType(OFGroupType.ALL)
-					.build();// Cria o grupo 1
-			groupModList.add(addGroup);
+				OFGroupAdd addGroup = swfactory.buildGroupAdd().setGroup(OFGroup.of(1)).setGroupType(OFGroupType.ALL)
+						.build();// Cria o grupo 1
+				groupModList.add(addGroup);
 
-			if (sw.write(addGroup)) { // Insere apenas uma vez, caso ja exista retorna 0
-				logger.info("Grupo inserido");
-			} else {
-				logger.info("Grupo NÃO inserido");
+				if (sw.write(addGroup)) { // Insere apenas uma vez, caso ja exista retorna 0
+					logger.info("Grupo inserido");
+				} else {
+					logger.info("Grupo NÃO inserido");
+				}
+
+				List<OFBucket> bucketList = new ArrayList<OFBucket>();
+				OFBucket myBucket = sw.getOFFactory().buildBucket().setActions(actionList).setWatchGroup(OFGroup.ANY)
+						.setWatchPort(OFPort.ANY).build();
+				bucketList.add(myBucket);
+
+				OFBucket myBucket2 = myBucket.createBuilder() /* Builder contains all fields as set in myBucket. */
+						.setActions(actionList).build();
+				bucketList.add(myBucket2);
+
+				// Adicionando uma lista com 2 bucket em um grupo
+				OFGroupAdd addGroup1 = sw.getOFFactory().buildGroupAdd().setGroupType(OFGroupType.ALL)
+						.setGroup(OFGroup.of(50)).setBuckets(bucketList).build();
+
+				/**
+				 * Outra forma de processar um PACKE_IN pode ser feito atraves da OFMessage msg
+				 * da seguinte maneira
+				 * 
+				 * Como o listner foi adicionado no metodo startup apenas para essas menssagens
+				 * então podemos garantir que o metodo receiv apenas recebera mensagens de
+				 * packet in
+				 * 
+				 */
+				// Ethernet l2 = floodlitghtProvideService.bcStore.get(cntx,
+				// floodlitghtProvideService.CONTEXT_PI_PAYLOAD);
+
+				if (msg.getType().equals(OFType.PACKET_IN)) {
+					// primeiro faz o cast
+					OFPacketIn pktin = OFPacketIn.class.cast(msg);
+
+					// Sempre será necessário fazer esse operador ternário pos a partir do openflow
+					// 1.2 o valor da porta fica em OFMatchField
+					OFPort myInPort = (pktin.getVersion().compareTo(OFVersion.OF_12) < 0) ? pktin.getInPort()
+							: pktin.getMatch().get(MatchField.IN_PORT);
+
+					// pktin.getMatch().get(MatchField.IPV4_DST); Usado apenas caso o packet in seja
+					// gerado pelo match de IPv4
+
+				}
 			}
-
-			List<OFBucket> bucketList = new ArrayList<OFBucket>();
-			OFBucket myBucket = sw.getOFFactory().buildBucket().setActions(actionList).setWatchGroup(OFGroup.ANY)
-					.setWatchPort(OFPort.ANY).build();
-			bucketList.add(myBucket);
-
-			OFBucket myBucket2 = myBucket.createBuilder() /* Builder contains all fields as set in myBucket. */
-					.setActions(actionList).build();
-			bucketList.add(myBucket2);
-
-			// Adicionando uma lista com 2 bucket em um grupo
-			OFGroupAdd addGroup1 = sw.getOFFactory().buildGroupAdd().setGroupType(OFGroupType.ALL)
-					.setGroup(OFGroup.of(50)).setBuckets(bucketList).build();
-
-			/**
-			 * Outra forma de processar um PACKE_IN pode ser feito atraves da OFMessage msg
-			 * da seguinte maneira
-			 * 
-			 * Como o listner foi adicionado no metodo startup apenas para essas menssagens
-			 * então podemos garantir que o metodo receiv apenas recebera mensagens de
-			 * packet in
-			 * 
-			 */
-			// Ethernet l2 = floodlitghtProvideService.bcStore.get(cntx,
-			// floodlitghtProvideService.CONTEXT_PI_PAYLOAD);
-
-			if (msg.getType().equals(OFType.PACKET_IN)) {
-				// primeiro faz o cast
-				OFPacketIn pktin = OFPacketIn.class.cast(msg);
-
-				// Sempre será necessário fazer esse operador ternário pos a partir do openflow
-				// 1.2 o valor da porta fica em OFMatchField
-				OFPort myInPort = (pktin.getVersion().compareTo(OFVersion.OF_12) < 0) ? pktin.getInPort()
-						: pktin.getMatch().get(MatchField.IN_PORT);
-
-				// pktin.getMatch().get(MatchField.IPV4_DST); Usado apenas caso o packet in seja
-				// gerado pelo match de IPv4
-
-			}
-
 			/**
 			 * PACKET_OUT
 			 * 
