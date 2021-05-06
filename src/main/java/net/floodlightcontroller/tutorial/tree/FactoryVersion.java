@@ -217,8 +217,7 @@ public class FactoryVersion implements IFloodlightModule, IOFMessageListener {
 			 * switch suporta o MatchField ex:
 			 */
 
-			logger.info(UtilLog.blue("BSN_IP_FRAGMENTATION:"
-					+ (matchBuilder.supports(MatchField.BSN_IP_FRAGMENTATION) ? "Suportado" : "Não suportado!")));
+			logger.info("BSN_IP_FRAGMENTATION:"+ matchBuilder!=null && matchBuilder.supports(MatchField.BSN_IP_FRAGMENTATION) ? "Suportado" : "Não suportado!");
 
 			/**
 			 * ACTIONS Depois de criar o match é preciso definir quais ações esse match
@@ -280,12 +279,7 @@ public class FactoryVersion implements IFloodlightModule, IOFMessageListener {
 			OFInstructionApplyActions applyActions = instructions.buildApplyActions().setActions(actionList).build();
 			OFInstructionApplyActions applyActions2 = instructions.applyActions(actionList);
 
-			if (applyActions.equals(applyActions2)) {
-				logger.info(UtilLog.blue("As duas formas de criaram o objetos iguais"));
-			} else {
-				logger.info(UtilLog.blue("As duas formas de criaram o objetos diferentes"));
-			}
-
+			
 			/**
 			 * FLOW MODS Biblioteca de criação de fluxos
 			 * 
@@ -478,7 +472,7 @@ public class FactoryVersion implements IFloodlightModule, IOFMessageListener {
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlitghtProvideService.addOFMessageListener(OFType.PACKET_IN, this);
-		logger.info(UtilLog.blue("FactoryVersion adicionado em listners"));
+		logger.info("FactoryVersion adicionado em listners");
 	}
 
 }
