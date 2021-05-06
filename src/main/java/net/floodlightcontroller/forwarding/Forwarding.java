@@ -205,8 +205,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
         OFPort inPort = OFMessageUtils.getInPort(pi);
         NodePortTuple npt = new NodePortTuple(sw.getId(), inPort);
 
-        Ansi ansi = new Ansi().fgRed().a("Processando PACKT_IN para roteamento >>> src["+eth.getSourceMACAddress().toString()+"] dst["+eth.getDestinationMACAddress().toString()+"]").reset();
-        //log.info(ansi.toString());
+        
+        log.info("Processando PACKT_IN para >>> src["+eth.getSourceMACAddress().toString()+"] dst["+eth.getDestinationMACAddress().toString()+"]");
+        
         if (decision != null) {
             if (log.isTraceEnabled()) {
                 log.trace("Forwarding decision={} was made for PacketIn={}", decision.getRoutingAction().toString(), pi);
@@ -314,9 +315,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
      */
     protected void doL3Routing(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
                              FloodlightContext cntx, @Nonnull VirtualGatewayInstance gatewayInstance, OFPort inPort) {
-    	Ansi ansi = new Ansi();
-		ansi.fgRed().a("doL3Routing").reset();
-		//log.info(ansi.toString());
+    	
+		log.info("doL3Routing");
         MacAddress gatewayMac = gatewayInstance.getGatewayMac();
 
         if (eth.getEtherType() == EthType.IPv4) {
@@ -363,9 +363,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
                                    VirtualGatewayInstance gateway, boolean requestFlowRemovedNotifn) {
         Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
         OFPort srcPort = OFMessageUtils.getInPort(pi);
-        Ansi ansi = new Ansi();
-		ansi.fgRed().a("doL3ForwardFlow").reset();
-		//log.info(ansi.toString());
+        
+		log.info("doL3ForwardFlow");
         MacAddress virtualGatewayMac = gateway.getGatewayMac();
         DatapathId srcSw = sw.getId();
         IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
@@ -618,9 +617,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
      * @param cntx The FloodlightContext associated with this OFPacketIn
      */
     protected void doL2Forwarding(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision, FloodlightContext cntx) {
-    	Ansi ansi = new Ansi();
-		ansi.fgRed().a("no decision was found - doL2Forwarding").reset();
-		//log.info(ansi.toString());
+    	
+		log.info("doL3ForwardFlow");
     	if (isBroadcastOrMulticast(eth)) {
             doFlood(sw, pi, decision, cntx);
         } else {
@@ -642,8 +640,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
         DatapathId srcSw = sw.getId();
         IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
         IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
-        Ansi ansi = new Ansi().fgRed().a("doL2ForwardFlow - DatapathId ["+srcSw.toString()+"]").reset();
-        log.info(ansi.toString());
+        
+        log.info("doL2ForwardFlow - DatapathId ["+srcSw.toString()+"]");
+        
         if (dstDevice == null) {
             log.debug("Destination device unknown. Flooding packet");
             doFlood(sw, pi, decision, cntx);
@@ -1041,8 +1040,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
     protected Match createMatchFromPacket(IOFSwitch sw, OFPort inPort, OFPacketIn pi, FloodlightContext cntx) {
         // The packet in match will only contain the port number.
         // We need to add in specifics for the hosts we're routing between.
-    	Ansi ansi = new Ansi().fgRed().a("createMatchFromPacket").reset();
-    	log.info(ansi.toString());
+    	
+    	log.info("createMatchFromPacket");
     	Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
         VlanVid vlan = null;      
@@ -1210,8 +1209,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
      * @param cntx The FloodlightContext associated with this OFPacketIn
      */
     protected void doFlood(IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision, FloodlightContext cntx) {
-    	Ansi ansi = new Ansi().fgRed().a("doFlood").reset();
-    	log.info(ansi.toString());
+    	
+    	log.info("doFlood");
     	
         OFPort inPort = OFMessageUtils.getInPort(pi);
         OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
@@ -1257,8 +1256,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
                 IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
         
         
-        Ansi ansi = new Ansi().fgRed().a("doFlood").reset();
-        log.info(ansi.toString());
+        
+        log.info("doL3Flood");
         
         
         MacAddress gatewayMac = gateway.getGatewayMac();
