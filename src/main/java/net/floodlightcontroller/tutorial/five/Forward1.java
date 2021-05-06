@@ -151,32 +151,34 @@ public class Forward1 implements IOFMessageListener, IFloodlightModule {
 		OFFactory factory = sw.getOFFactory();
 
 		Match match = makeMatch(factory, camadas);
-		
-		ArrayList<OFAction> actions = makeActions(factory,msg/* , Topologia */);// aqui também vai a topologia para determinar as melhores ações para o fluxo
-		
-		ArrayList<OFInstruction> instructions = makeInstructions(factory,actions);
 
-		OFFlowAdd flowAdd0 = factory.buildFlowAdd().setBufferId(OFBufferId.NO_BUFFER).setHardTimeout(3600)
-				.setIdleTimeout(10).setPriority(32768).setInstructions(instructions).setMatch(match).build();
-		
+		ArrayList<OFAction> actions = makeActions(factory, msg/* , Topologia */);// aqui também vai a topologia para
+																					// determinar as melhores ações para
+																					// o fluxo
+
+		ArrayList<OFInstruction> instructions = makeInstructions(factory, actions);
+
+		OFFlowAdd flowAdd0 = factory.buildFlowAdd().setBufferId(OFBufferId.NO_BUFFER).setHardTimeout(0)
+				.setIdleTimeout(0).setPriority(32768).setInstructions(instructions).setMatch(match).build();
+
 		sw.write(flowAdd0);
 		return Command.CONTINUE; // Comando para que a menssagem constinue sendo processada por outros listners
 	}
 
 	private ArrayList<OFInstruction> makeInstructions(OFFactory factory, ArrayList<OFAction> actions) {
-		
+
 		ArrayList<OFInstruction> instructionList = new ArrayList<OFInstruction>();
 		OFInstructions instructions = factory.instructions();
-		
+
 		OFInstructionApplyActions applyActions = instructions.buildApplyActions().setActions(actions).build();
 		instructionList.add(applyActions);
 		return instructionList;
 	}
 
-	private ArrayList<OFAction> makeActions(OFFactory factory,OFMessage msg) {
+	private ArrayList<OFAction> makeActions(OFFactory factory, OFMessage msg) {
 		OFPacketIn pktin;
-		OFPort myInPort=null;
-		
+		OFPort myInPort = null;
+
 		if (msg.getType().equals(OFType.PACKET_IN)) {
 			// primeiro faz o cast
 			pktin = OFPacketIn.class.cast(msg);
@@ -190,18 +192,25 @@ public class Forward1 implements IOFMessageListener, IFloodlightModule {
 			// gerado pelo match de IPv4
 
 		}
-		
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>(); // Lista de ações que sera contruida daqui para		
+
+		ArrayList<OFAction> actionList = new ArrayList<OFAction>(); // Lista de ações que sera contruida daqui para
 		OFActions actions = factory.actions();
-		
-		
-		OFActionOutput output = null;
-		if(myInPort!=null && myInPort.equals(OFPort.of(1))) {
-			output = actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build(); 
-		}else if (myInPort!=null && myInPort.equals(OFPort.of(2))) {
-			output = actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build();
-		}		
-		actionList.add(output);
+		OFAction output = null;
+
+		if (myInPort != null && myInPort.equals(OFPort.of(1))) {
+			output = factory.actions().buildOutput().setPort(OFPort.of(2)).build();
+		} else if (myInPort != null && myInPort.equals(OFPort.of(2))) {
+			output = factory.actions().buildOutput().setPort(OFPort.of(1)).build();
+		}
+		//actionList.add(output);
+		/*
+		 * OFActionOutput output = null; if(myInPort!=null &&
+		 * myInPort.equals(OFPort.of(1))) { output =
+		 * actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build();
+		 * }else if (myInPort!=null && myInPort.equals(OFPort.of(2))) { output =
+		 * actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build(); }
+		 * actionList.add(output);
+		 */
 		return actionList;
 	}
 
@@ -239,6 +248,7 @@ public class Forward1 implements IOFMessageListener, IFloodlightModule {
 			}
 		}
 		Match match = matchBuilder.build();
+		
 		return match;
 	}
 
