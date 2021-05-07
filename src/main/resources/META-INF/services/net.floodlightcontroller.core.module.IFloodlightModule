@@ -18,8 +18,6 @@ org.sdnplatform.sync.internal.SyncTorture
 net.floodlightcontroller.simpleft.FT
 net.floodlightcontroller.staticentry.StaticEntryPusher
 net.floodlightcontroller.topology.TopologyManager
-net.floodlightcontroller.forwarding.Forwarding
-net.floodlightcontroller.loadbalancer.LoadBalancer
 net.floodlightcontroller.linkdiscovery.internal.LinkDiscoveryManager
 net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl
 net.floodlightcontroller.firewall.Firewall
@@ -31,7 +29,4 @@ net.floodlightcontroller.routing.RoutingManager
 net.floodlightcontroller.cpanalyzer.CPAnalyzer
 net.floodlightcontroller.hasupport.HAController
 net.floodlightcontroller.tutorial.one.MACTracker
-net.floodlightcontroller.tutorial.one.ProcessPacketIn
-net.floodlightcontroller.tutorial.two.PktInHistory
-net.floodlightcontroller.tutorial.tree.FactoryVersion
-net.floodlightcontroller.tutorial.four.Queue
+net.floodlightcontroller.tutorial.five.Forward2

@@ -222,7 +222,7 @@ public class Queue implements IFloodlightModule, IOFMessageListener {
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		provider.addOFMessageListener(OFType.PACKET_IN, this);
-		logger.info(UtilLog.blue("Queue.java adicionado em listners"));
+		logger.info("Queue.java adicionado em listners");
 
 	}
 
