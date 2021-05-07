@@ -9,6 +9,7 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.core.types.MacVlanPair;
+import net.floodlightcontroller.core.util.OFUtils;
 import net.floodlightcontroller.debugcounter.IDebugCounter;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
 import net.floodlightcontroller.debugcounter.IDebugCounterService.MetaData;
@@ -161,17 +162,58 @@ public class Forward2
 
 		case FLOW_REMOVED:
 			logger.info("Process the FLOW_REMOVED message");
-			// process the flow-removed message
-			break;
+			return this.processFlowRemoved(sw, OFFlowRemoved.class.cast(msg), cntx);
+
 		case ERROR:
 			logger.info("Process the ERRO{} from switch{}", msg, sw);
 			// process the erro message
 			break;
 
 		default:
+			logger.info("Mensagem inesperada {} from switch{}", msg, sw);
 			break;
 		}
 		return Command.CONTINUE;
+	}
+
+	private Command processFlowRemoved(IOFSwitch sw, OFFlowRemoved msg, FloodlightContext cntx) {
+
+		// COOCKIE é utilizado para indentificar que este fluxo pertence a esse módulo,
+		// a casos em que existes diversos módulos para tratar diferentes tipos de fluxo
+		// então é importante cada módulo tratar seu próprio fluxo e passar os demais
+		// para ser tratado adiante
+		if (!msg.getCookie().equals(LEARNING_SWITCH_COOKIE)) {
+			return Command.CONTINUE;
+		}
+		logger.info("{} removendo fluxo {}", sw, msg);
+
+		Match match = msg.getMatch();
+		// remove o MAC/VLAN de >> portMap
+		this.removeFromPortMap(sw, match.get(MatchField.ETH_SRC), match.get(MatchField.VLAN_VID).getVlanVid());
+
+		Match.Builder matchBuilder = sw.getOFFactory().buildMatch();
+		matchBuilder.setExact(MatchField.ETH_SRC, match.get(MatchField.ETH_DST)).setExact(MatchField.ETH_DST,
+				match.get(MatchField.ETH_SRC));
+		if (match.get(MatchField.VLAN_VID) != null) {
+			matchBuilder.setExact(MatchField.VLAN_VID, match.get(MatchField.VLAN_VID));
+		}
+		this.writeFlowMod(sw, OFFlowModCommand.DELETE, OFBufferId.NO_BUFFER, matchBuilder.build(),
+				match.get(MatchField.IN_PORT));
+		return Command.CONTINUE;
+		
+	}
+
+	private void removeFromPortMap(IOFSwitch sw, MacAddress macAddress, VlanVid vlanVid) {
+
+		if (vlanVid == null || VlanVid.FULL_MASK.equals(vlanVid)) {
+			vlanVid = VlanVid.ZERO;
+		}
+
+		Map<MacVlanPair, OFPort> swMap = this.macVlanToSwitchPortMap.get(sw);
+		if (swMap != null) {
+			MacVlanPair key = new MacVlanPair(macAddress, vlanVid);
+			swMap.remove(key);
+		}
 	}
 
 	/**
@@ -231,12 +273,23 @@ public class Forward2
 			// inPort e outPort
 			this.pushPacket(sw, match, pi, outPort);
 			this.writeFlowMod(sw, OFFlowModCommand.ADD, OFBufferId.NO_BUFFER, match, outPort);
+			if (LEARNING_SWITCH_REVERSE_FLOW) {
+				Match.Builder matchBuilder = match.createBuilder();
+				matchBuilder.setExact(MatchField.ETH_SRC, match.get(MatchField.ETH_DST));
+				matchBuilder.setExact(MatchField.ETH_DST, match.get(MatchField.ETH_SRC));
+				matchBuilder.setExact(MatchField.IN_PORT, outPort);
+				if (match.get(MatchField.VLAN_VID) != null) {
+					matchBuilder.setExact(MatchField.VLAN_VID, match.get(MatchField.VLAN_VID));
+				}
+				this.writeFlowMod(sw, OFFlowModCommand.ADD, OFBufferId.NO_BUFFER, matchBuilder.build(), portIn);
+			}
 		}
 
 		return Command.CONTINUE;
 	}
 
-	private void writeFlowMod(IOFSwitch sw, OFFlowModCommand add, OFBufferId noBuffer, Match match, OFPort outPort) {
+	private void writeFlowMod(IOFSwitch sw, OFFlowModCommand command, OFBufferId bufferId, Match match,
+			OFPort outPort) {
 		// from openflow 1.0 spec - need to set these on a struct ofp_flow_mod:
 		// struct ofp_flow_mod {
 		// struct ofp_header header;
@@ -259,9 +312,41 @@ public class Forward2
 		// from the length field in the
 		// header. */
 		// };
-		
-		
 
+		OFFlowMod.Builder flowModBuilder;
+
+		if (OFFlowModCommand.DELETE.equals(command)) {
+			flowModBuilder = sw.getOFFactory().buildFlowDelete();
+		} else {
+			flowModBuilder = sw.getOFFactory().buildFlowAdd();
+		}
+		flowModBuilder.setMatch(match);
+		flowModBuilder.setCookie(U64.of(LEARNING_SWITCH_COOKIE));// Indentificador dos fluxos criados por esse módulo
+		flowModBuilder.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+		flowModBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+		flowModBuilder.setPriority(FLOWMOD_PRIORITY);
+		flowModBuilder.setBufferId(bufferId);
+		if (OFFlowModCommand.DELETE.equals(command)) {
+			flowModBuilder.setOutPort(OFPort.ANY);
+		} else {
+			flowModBuilder.setOutPort(outPort);
+
+		}
+		Set<OFFlowModFlags> setFlowModFlags = new HashSet<OFFlowModFlags>();
+		if (!OFFlowModCommand.DELETE.equals(command)) {
+			setFlowModFlags.add(OFFlowModFlags.SEND_FLOW_REM);
+		}
+		flowModBuilder.setFlags(setFlowModFlags);
+		List<OFAction> actions = new ArrayList<OFAction>();
+		actions.add(sw.getOFFactory().actions().buildOutput().setMaxLen(0xffFFffFF).setPort(outPort).build());
+		FlowModUtils.setActions(flowModBuilder, actions, sw);
+		if (command.equals(OFFlowModCommand.DELETE)) {
+			logger.info("{} deleting flow mod {}", sw, flowModBuilder.build());
+		} else {
+			logger.info("{} adding flow mod {}", sw, flowModBuilder.build());
+		}
+		counterFlowMod.increment();
+		sw.write(flowModBuilder.build());
 	}
 
 	private void pushPacket(IOFSwitch sw, Match match, OFPacketIn pi, OFPort outPort) {
