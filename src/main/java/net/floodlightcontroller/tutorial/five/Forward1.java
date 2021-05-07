@@ -1,7 +1,9 @@
 /**
  * @author devairdarolt
  * 
- * O obejtivo dessa classe é fazer um breve tutorial de forward com apenas 1 switch 
+ * O obejtivo dessa classe é fazer um breve tutorial de forward 
+ * na qual o controlador insere um flood de switch em switch
+ * fazendo o pacote ir e voltar 
  * 
  */
 package net.floodlightcontroller.tutorial.five;
@@ -9,13 +11,19 @@ package net.floodlightcontroller.tutorial.five;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import org.apache.commons.logging.LogFactory;
 import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
+import org.projectfloodlight.openflow.protocol.OFFlowMod;
+import org.projectfloodlight.openflow.protocol.OFFlowModCommand;
+import org.projectfloodlight.openflow.protocol.OFFlowModFlags;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
+import org.projectfloodlight.openflow.protocol.OFPacketOut;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
@@ -28,8 +36,13 @@ import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IpProtocol;
+import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
+import org.projectfloodlight.openflow.types.OFVlanVidMatch;
+import org.projectfloodlight.openflow.types.U64;
+import org.projectfloodlight.openflow.types.VlanVid;
+import org.python.bouncycastle.pqc.math.linearalgebra.RandUtils;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -50,11 +63,19 @@ import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.TCP;
 import net.floodlightcontroller.packet.UDP;
+import net.floodlightcontroller.util.FlowModUtils;
+import net.floodlightcontroller.util.OFMessageUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Forward1 implements IOFMessageListener, IFloodlightModule {
+
+	// more flow-mod defaults
+	public static final long COOKIE = 200;
+	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
+	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
+	protected static short FLOWMOD_PRIORITY = 100;
 
 	protected IFloodlightProviderService floodlightProviderService;
 	protected Set<String> listaMACs;
@@ -100,6 +121,8 @@ public class Forward1 implements IOFMessageListener, IFloodlightModule {
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProviderService.addOFMessageListener(OFType.PACKET_IN, this);
+		floodlightProviderService.addOFMessageListener(OFType.FLOW_REMOVED, this);
+		floodlightProviderService.addOFMessageListener(OFType.EXPERIMENTER, this);
 		logger.info("Forward1 adicionado aos listner");
 		// agora Forward1 será avisado toda vez que um PACKET_IN chegar ao controlador
 
@@ -142,135 +165,122 @@ public class Forward1 implements IOFMessageListener, IFloodlightModule {
 	 */
 	@Override
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
-
-		Ethernet l2 = floodlightProviderService.bcStore.get(cntx, floodlightProviderService.CONTEXT_PI_PAYLOAD);
-
-		// Retorna os dados separados por camadas... l2, l3, l4
-		Map<String, Object> camadas = parseLayers(l2);
-
-		OFFactory factory = sw.getOFFactory();
-
-		Match match = makeMatch(factory, camadas);
-
-		ArrayList<OFAction> actions = makeActions(factory, msg/* , Topologia */);// aqui também vai a topologia para
-																					// determinar as melhores ações para
-																					// o fluxo
-
-		ArrayList<OFInstruction> instructions = makeInstructions(factory, actions);
-
-		OFFlowAdd flowAdd0 = factory.buildFlowAdd().setBufferId(OFBufferId.NO_BUFFER).setHardTimeout(0)
-				.setIdleTimeout(0).setPriority(32768).setInstructions(instructions).setMatch(match).build();
-
-		sw.write(flowAdd0);
-		return Command.CONTINUE; // Comando para que a menssagem constinue sendo processada por outros listners
-	}
-
-	private ArrayList<OFInstruction> makeInstructions(OFFactory factory, ArrayList<OFAction> actions) {
-
-		ArrayList<OFInstruction> instructionList = new ArrayList<OFInstruction>();
-		OFInstructions instructions = factory.instructions();
-
-		OFInstructionApplyActions applyActions = instructions.buildApplyActions().setActions(actions).build();
-		instructionList.add(applyActions);
-		return instructionList;
-	}
-
-	private ArrayList<OFAction> makeActions(OFFactory factory, OFMessage msg) {
-		OFPacketIn pktin;
-		OFPort myInPort = null;
-
-		if (msg.getType().equals(OFType.PACKET_IN)) {
-			// primeiro faz o cast
-			pktin = OFPacketIn.class.cast(msg);
-
-			// Sempre será necessário fazer esse operador ternário pos a partir do openflow
-			// 1.2 o valor da porta fica em OFMatchField
-			myInPort = (pktin.getVersion().compareTo(OFVersion.OF_12) < 0) ? pktin.getInPort()
-					: pktin.getMatch().get(MatchField.IN_PORT);
-
-			// pktin.getMatch().get(MatchField.IPV4_DST); Usado apenas caso o packet in seja
-			// gerado pelo match de IPv4
-
-		}
-
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>(); // Lista de ações que sera contruida daqui para
-		OFActions actions = factory.actions();
-		OFAction output = null;
-
-		if (myInPort != null && myInPort.equals(OFPort.of(1))) {
-			output = factory.actions().buildOutput().setPort(OFPort.of(2)).build();
-		} else if (myInPort != null && myInPort.equals(OFPort.of(2))) {
-			output = factory.actions().buildOutput().setPort(OFPort.of(1)).build();
-		}
-		//actionList.add(output);
-		/*
-		 * OFActionOutput output = null; if(myInPort!=null &&
-		 * myInPort.equals(OFPort.of(1))) { output =
-		 * actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build();
-		 * }else if (myInPort!=null && myInPort.equals(OFPort.of(2))) { output =
-		 * actions.buildOutput().setMaxLen(0xFFffFFff).setPort(OFPort.FLOOD).build(); }
-		 * actionList.add(output);
-		 */
-		return actionList;
-	}
-
-	/**
-	 * Cria um match para as camadas informadas
-	 * 
-	 * @param factory
-	 * @param object
-	 * @return match
-	 */
-	private Match makeMatch(OFFactory factory, Map<String, Object> camadas) {
-		Match.Builder matchBuilder = factory.buildMatch();
-		if (camadas.containsKey("l2")) {
-			matchBuilder.setExact(MatchField.ETH_SRC, Ethernet.class.cast(camadas.get("l2")).getSourceMACAddress());
-			matchBuilder.setExact(MatchField.ETH_DST,
-					Ethernet.class.cast(camadas.get("l2")).getDestinationMACAddress());
-			// TODO if brodcast >>> flood
-			// TODO if multicast >>> doSomeThing
-		}
-		if (camadas.containsKey("l3")) {
-			matchBuilder.setExact(MatchField.IPV4_SRC, IPv4.class.cast(camadas.get("l3")).getSourceAddress());
-			matchBuilder.setExact(MatchField.IPV4_DST, IPv4.class.cast(camadas.get("l3")).getDestinationAddress());
-			// TODO if broadcast >>> faça_algo
-			// TODO if multicast >>> faça_algo
-		}
-		if (camadas.containsKey("l4")) {
-			if (camadas.get("l4") instanceof TCP) {
-				matchBuilder.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-				matchBuilder.setExact(MatchField.TCP_SRC, ((TCP) camadas.get("l4")).getSourcePort());
-				matchBuilder.setExact(MatchField.TCP_DST, ((TCP) camadas.get("l4")).getDestinationPort());
-			} else if (camadas.get("l4") instanceof UDP) {
-				matchBuilder.setExact(MatchField.IP_PROTO, IpProtocol.UDP);
-				matchBuilder.setExact(MatchField.UDP_SRC, ((UDP) camadas.get("l4")).getSourcePort());
-				matchBuilder.setExact(MatchField.UDP_DST, ((UDP) camadas.get("l4")).getDestinationPort());
-			}
-		}
-		Match match = matchBuilder.build();
 		
-		return match;
+		switch (msg.getType()) {
+		case PACKET_IN:
+			logger.info("packet-in recebido de {}", sw);
+			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
+		case FLOW_REMOVED:
+			logger.info("FLOW_REMOVED recebido de {}", sw);
+			break;
+		case ERROR:
+			logger.info("ERRO recebido de switch {}: {}", sw, msg);
+			break;		
+		default:
+			logger.info("Mensagem de inesperada de switch {}: {}", sw, msg);			
+			break;
+		}
+
+		return Command.CONTINUE; // Comando para que a menssagem constinue sendo processada por outros listners
+
 	}
 
 	/**
-	 * @param l2
-	 * @param camadas
+	 * Função para processar o packet-in
+	 * 
+	 * @param sw
+	 * @param cast
+	 * @param cntx
+	 * @return
 	 */
-	private HashMap<String, Object> parseLayers(Ethernet l2) {
-		HashMap<String, Object> camadas = new HashMap<String, Object>();
-		camadas.put("l2", l2);
-		if (l2.getEtherType().equals(EthType.IPv4)) {
-			IPv4 l3 = (IPv4) l2.getPayload();
-			camadas.put("l3", l3);
-			if (l3.getProtocol().equals(IpProtocol.TCP)) {
-				TCP l4 = (TCP) l3.getPayload();
-				camadas.put("l4", l4);
-			} else if (l3.getProtocol().equals(IpProtocol.UDP)) {
-				UDP l4 = (UDP) l3.getPayload();
-				camadas.put("l4", l4);
-			}
-		}
-		return camadas;
-	}
+	private Command processPacketIn(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
 
+		OFPort inPort = OFMessageUtils.getInPort(pi);
+
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+		VlanVid vlan = VlanVid.ofVlan(eth.getVlanID());
+		MacAddress srcMac = eth.getSourceMACAddress();
+		MacAddress dstMac = eth.getDestinationMACAddress();
+		Match.Builder mb = sw.getOFFactory().buildMatch();
+		mb.setExact(MatchField.IN_PORT, inPort).setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST,
+				dstMac);
+		Match match = mb.build();
+
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// GET ROUTE
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+		// Como este caso possui um único switch, quando o pacote vem da porta 1, envia
+		// para a porta 2 e vice-versa
+
+		// OFMessageUtils.writePacketOutForPacketIn(sw, pi, OFPort.FLOOD);// Cria um
+		// packet-out flood -- gera muitos packet-in
+
+		OFPort outport = null;
+
+		if (inPort.equals(OFPort.of(1))) {
+			outport = OFPort.of(2);
+		} else {
+			outport = OFPort.of(1);
+		}
+		List<OFAction> actions = new ArrayList<OFAction>();
+		actions.add(sw.getOFFactory().actions().buildOutput().setPort(outport).setMaxLen(0xffFFffFF).build());
+		
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// PACKET-OUT --- Cria um packet out para a porta
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		boolean packetOut = true; // Devolve o pacote ao switche com ações do que deve ser feito
+		if (packetOut) {
+			OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
+			pob.setActions(actions);
+
+			// If the switch doens't support buffering set the buffer id to be none
+			// otherwise it'll be the the buffer id of the PacketIn
+			if (sw.getBuffers() == 0) {
+				// We set the PI buffer id here so we don't have to check again below
+				pi = pi.createBuilder().setBufferId(OFBufferId.NO_BUFFER).build();
+				pob.setBufferId(OFBufferId.NO_BUFFER);
+			} else {
+				pob.setBufferId(pi.getBufferId());
+			}
+			// If the buffer id is none or the switch doesn's support buffering
+			// we send the data with the packet out
+			if (pi.getBufferId() == OFBufferId.NO_BUFFER) {
+				byte[] packetData = pi.getData();
+				pob.setData(packetData);
+			}
+
+			OFMessageUtils.setInPort(pob, inPort);
+			sw.write(pob.build());
+		}
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// ADD-FLOW
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		boolean addFlow = true;// Adiciona fluxo na tabela de fluxo para tratar os demais pacotes
+		if (addFlow) {
+			OFFlowMod.Builder flowBuilder;
+			flowBuilder = sw.getOFFactory().buildFlowAdd();
+			flowBuilder.setMatch(match);
+			flowBuilder.setCookie(U64.of(COOKIE));
+			flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+			flowBuilder.setPriority(FLOWMOD_PRIORITY);
+			flowBuilder.setOutPort(outport);
+			Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+			flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o idl-timeout ocorrer
+			flowBuilder.setFlags(flags);
+			
+			List<OFAction> al = new ArrayList<OFAction>();
+			al.add(sw.getOFFactory().actions().buildOutput().setPort(outport).setMaxLen(0xffFFffFF).build());
+			FlowModUtils.setActions(flowBuilder, actions, sw);
+			sw.write(flowBuilder.build());
+		}
+		
+		return Command.CONTINUE;
+	}
 }
