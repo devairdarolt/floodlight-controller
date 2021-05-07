@@ -63,7 +63,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 
 	// Module dependencies
 	protected IFloodlightProviderService floodlightProviderService;
-	protected IRestApiService restApiService;
+	
 
 	protected IDebugCounterService debugCounterService;
 	private IDebugCounter counterFlowMod;
@@ -82,7 +82,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 	public static final long LEARNING_SWITCH_COOKIE = (long) (LEARNING_SWITCH_APP_ID & ((1 << APP_ID_BITS) - 1)) << APP_ID_SHIFT;
 
 	// more flow-mod defaults
-	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
+	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 20; // in seconds
 	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
 	protected static short FLOWMOD_PRIORITY = 100;
 
@@ -539,7 +539,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 		macVlanToSwitchPortMap = new ConcurrentHashMap<IOFSwitch, Map<MacVlanPair, OFPort>>();
 		floodlightProviderService = context.getServiceImpl(IFloodlightProviderService.class);
 		debugCounterService = context.getServiceImpl(IDebugCounterService.class);
-		restApiService = context.getServiceImpl(IRestApiService.class);
+		
 	}
 
 	@Override
