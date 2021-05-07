@@ -110,7 +110,7 @@ Algoritmos multipath encontrados:
 		
 >curl http://localhost:8080/wm/core/switch/00:00:00:00:00:00:00:01/flow/json | python -mjson.tool
 
-12. get oacket in hyistory (tutorial.two)
+12. get packet in hyistory (tutorial.two)
 
 		curl -s http://localhost:8080/wm/pktinhistory/history/json | python -mjson.tool
 
@@ -149,6 +149,8 @@ Para que o controlador tenha conhecimento dos host
 <h3>TUTORIAL MININET</h3>												
 
 Mostra os fluxos do switch s1
+>mininet\>sh ovs-ofctl dump-flows s2 -O OpenFlow13
+
 >ovs-vsctl dump-flows s1
 
 Print match flow from s1
