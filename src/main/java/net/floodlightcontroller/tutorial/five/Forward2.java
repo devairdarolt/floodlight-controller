@@ -285,7 +285,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 		// the packet-out should be ignored.
 		if (inPort.equals(outport)) {
 			if (log.isDebugEnabled()) {
-				log.debug("Attempting to do packet-out to the same " +
+				log.info("Attempting to do packet-out to the same " +
 						"interface as packet-in. Dropping packet. " +
 						" SrcSwitch={}, match = {}, pi={}",
 						new Object[]{sw, match, pi});
@@ -486,8 +486,10 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
 		case PACKET_IN:
+			log.info("packet-in recebido");
 			return this.processPacketInMessage(sw, (OFPacketIn) msg, cntx);
 		case FLOW_REMOVED:
+			log.info("packet FLOW_REMOVED recebido");
 			return this.processFlowRemovedMessage(sw, (OFFlowRemoved) msg);
 		case ERROR:
 			log.info("received an error {} from switch {}", msg, sw);
@@ -547,7 +549,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 		floodlightProviderService.addOFMessageListener(OFType.PACKET_IN, this);
 		floodlightProviderService.addOFMessageListener(OFType.FLOW_REMOVED, this);
 		floodlightProviderService.addOFMessageListener(OFType.ERROR, this);
-		
+		log.info("Forward2 adicionado aos listners");
 
 		// read our config options
 		Map<String, String> configOptions = context.getConfigParams(this);
@@ -579,9 +581,9 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 					"using default of {}",
 					FLOWMOD_PRIORITY);
 		}
-		log.debug("FlowMod idle timeout set to {} seconds", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
-		log.debug("FlowMod hard timeout set to {} seconds", FLOWMOD_DEFAULT_HARD_TIMEOUT);
-		log.debug("FlowMod priority set to {}", FLOWMOD_PRIORITY);
+		log.info("FlowMod idle timeout set to {} seconds", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+		log.info("FlowMod hard timeout set to {} seconds", FLOWMOD_DEFAULT_HARD_TIMEOUT);
+		log.info("FlowMod priority set to {}", FLOWMOD_PRIORITY);
 
 		debugCounterService.registerModule(this.getName());
 		counterFlowMod = debugCounterService.registerCounter(this.getName(), "flow-mods-written", "Flow mods written to switches by Forward2", MetaData.WARN);
@@ -593,7 +595,7 @@ public class Forward2 implements IFloodlightModule, IOFMessageListener, IControl
 	@Override
 	public void onMessageConsumed(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		if (this.flushAtCompletion) {
-			log.debug("Learning switch: ended processing packet {}",msg.toString());
+			log.info("Learning switch: ended processing packet {}",msg.toString());
 		}
 	}
 }
