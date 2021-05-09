@@ -39,6 +39,7 @@ import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
+import net.floodlightcontroller.core.types.NodePortTuple;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
@@ -73,7 +74,7 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 
 	// more flow-mod defaults
 	public static final long COOKIE = 200;
-	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
+	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 20; // in seconds
 	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
 	protected static short FLOWMOD_PRIORITY = 100;
 
@@ -196,7 +197,8 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 
 		switch (msg.getType()) {
 		case PACKET_IN:
-			logger.info("packet-in recebido de {}", sw);
+			OFPort inPort = OFMessageUtils.getInPort(OFPacketIn.class.cast(msg));
+			logger.info("packet-in recebido de {} porta {}", sw, inPort);
 			mapGateways(sw, OFPacketIn.class.cast(msg), cntx);
 			return processPacketInRoute(sw, OFPacketIn.class.cast(msg), cntx);
 		// return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
@@ -260,20 +262,32 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 		MacAddress srcMac = eth.getSourceMACAddress();
 		MacAddress dstMac = eth.getDestinationMACAddress();
 		boolean arp = false;
-
-		Set<MacAddress> macs = gateWays.keySet();
-		for (MacAddress mac : macs) {
-			if (!mac.equals(srcMac)) {
-				Map<IOFSwitch, OFPort> switchPort = gateWays.get(mac);
-				for (IOFSwitch swt : switchPort.keySet()) {
-					OFPort porta = switchPort.get(swt);
-					OFMessageUtils.writePacketOutForPacketIn(swt, packetIn, porta);
-					logger.info("Packet out enviado de {} para {} porta" + porta + " ", srcMac, swt);
-					arp = true;
+		IDevice srcDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_SRC_DEVICE);
+		if (dstMac.isMulticast() || dstMac.isBroadcast()) {
+			Collection<? extends IDevice> devices = serviceDeviceManager.getAllDevices();
+			for (IDevice device : devices) {
+				if (!device.equals(srcDevice)) {
+					SwitchPort[] attachPoints = device.getAttachmentPoints();
+					if (attachPoints != null && attachPoints.length > 0) {
+						DatapathId gateway = attachPoints[0].getNodeId();
+						OFPort portId = attachPoints[0].getPortId();
+						IOFSwitch swt = serviceSwitch.getSwitch(gateway);
+						OFMessageUtils.writePacketOutForPacketIn(swt, packetIn, portId);
+						logger.info("Pacote repassado para switch{} porta{}", swt, OFPort.FLOOD);
+						logger.info("destino:{}",device.getMACAddress());
+					}
 				}
 			}
 		}
 
+		/*
+		 * Set<MacAddress> macs = gateWays.keySet(); for (MacAddress mac : macs) { if
+		 * (!mac.equals(srcMac)) { Map<IOFSwitch, OFPort> switchPort =
+		 * gateWays.get(mac); for (IOFSwitch swt : switchPort.keySet()) { OFPort porta =
+		 * switchPort.get(swt); OFMessageUtils.writePacketOutForPacketIn(swt, packetIn,
+		 * porta); logger.info("Packet out enviado de {} para {} porta" + porta + " ",
+		 * srcMac, swt); arp = true; } } }
+		 */
 		return arp;
 	}
 
@@ -287,19 +301,27 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 			routerARP(sw, packetIn, cntx);
 			return Command.CONTINUE;
 		}
-
+		
 		/**
 		 * Neste momento o controlador ja conhece origem e destino, então é possível
 		 * criar um fluxo para tratar os demais pacotes
 		 */
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		//GET ROUTE -- 
+		// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+		VlanVid vlan = VlanVid.ofVlan(eth.getVlanID());
+		Match.Builder mb = sw.getOFFactory().buildMatch();
+		mb.setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST, dstMac);
+		Match match = mb.build();
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// GET ROUTE --
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		logger.info("Criando fluxo entre {} {} ", srcMac, dstMac);
 
 		IDevice srcDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_SRC_DEVICE);
 		IDevice dstDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_DST_DEVICE);
-		if (srcDevice == null || dstDevice==null) {
+		if (srcDevice == null || dstDevice == null) {
 			logger.info("O controlador não conhece os dispositivos a src{} e dst{}", srcDevice, dstDevice);
 			return Command.CONTINUE;
 		}
@@ -316,10 +338,79 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 
 		Path shortestPath = serviceRoutingEngine.getPath(srcDataPath, dstDataPath);
 		logger.info("Path {}", shortestPath);
-		
+
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		//GET ROUTE -- 
+		// MAKE FLOW -- para cada node de route
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		Set<DatapathId> added = new HashSet<DatapathId>();
+		if (shortestPath.getPath().isEmpty()) {
+			OFPort port = dstAttachPoints[0].getPortId();
+
+			OFFlowMod.Builder flowBuilder;
+			flowBuilder = sw.getOFFactory().buildFlowAdd();
+			flowBuilder.setMatch(match);
+			flowBuilder.setCookie(U64.of(COOKIE));
+			flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+			flowBuilder.setPriority(FLOWMOD_PRIORITY);
+			flowBuilder.setOutPort(port);
+			Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+			flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+													// idl-timeout ocorrer
+			flowBuilder.setFlags(flags);
+
+			// ACTIONS
+			List<OFAction> actions = new ArrayList<OFAction>();
+			actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
+
+			// INSERT IN SWITCH OF PATH
+			IOFSwitch swit = serviceSwitch.getSwitch(dstDataPath);
+			FlowModUtils.setActions(flowBuilder, actions, swit);
+			swit.write(flowBuilder.build());
+			logger.info("Flow ADD node{} port{}", swit, port);
+			OFMessageUtils.writePacketOutForPacketIn(swit, packetIn, port);
+		} else {
+			OFPort firstPort = null;
+			for (NodePortTuple node : shortestPath.getPath()) {
+				DatapathId dataPathId = node.getNodeId();
+				OFPort port = node.getPortId();
+				if(firstPort==null) {
+					firstPort = port;
+				}
+				if (!added.contains(dataPathId)) {// Para que não forme ciclos, então escolhe apenas uma rota
+					added.add(dataPathId);
+					OFFlowMod.Builder flowBuilder;
+					flowBuilder = sw.getOFFactory().buildFlowAdd();
+					flowBuilder.setMatch(match);
+					flowBuilder.setCookie(U64.of(COOKIE));
+					flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+					flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+					flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+					flowBuilder.setPriority(FLOWMOD_PRIORITY);
+					flowBuilder.setOutPort(port);
+					Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+					flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+															// idl-timeout ocorrer
+					flowBuilder.setFlags(flags);
+
+					// ACTIONS
+					List<OFAction> actions = new ArrayList<OFAction>();
+					actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
+
+					// INSERT IN SWITCH OF PATH
+					IOFSwitch swit = serviceSwitch.getSwitch(dataPathId);
+					FlowModUtils.setActions(flowBuilder, actions, swit);
+					swit.write(flowBuilder.build());
+					logger.info("Flow ADD node{} port{}", swit, port);				
+					
+				}
+
+			}
+			
+			
+			OFMessageUtils.writePacketOutForPacketIn(sw, packetIn, firstPort);
+		}
 		return Command.CONTINUE;
 
 	}
