@@ -273,21 +273,14 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 						OFPort portId = attachPoints[0].getPortId();
 						IOFSwitch swt = serviceSwitch.getSwitch(gateway);
 						OFMessageUtils.writePacketOutForPacketIn(swt, packetIn, portId);
-						logger.info("Pacote repassado para switch{} porta{}", swt, OFPort.FLOOD);
-						logger.info("destino:{}",device.getMACAddress());
+						logger.info("Pacote repassado para switch{} porta{}", swt, portId);
+						logger.info("destino:{}", device.getMACAddress());
 					}
 				}
 			}
 		}
 
-		/*
-		 * Set<MacAddress> macs = gateWays.keySet(); for (MacAddress mac : macs) { if
-		 * (!mac.equals(srcMac)) { Map<IOFSwitch, OFPort> switchPort =
-		 * gateWays.get(mac); for (IOFSwitch swt : switchPort.keySet()) { OFPort porta =
-		 * switchPort.get(swt); OFMessageUtils.writePacketOutForPacketIn(swt, packetIn,
-		 * porta); logger.info("Packet out enviado de {} para {} porta" + porta + " ",
-		 * srcMac, swt); arp = true; } } }
-		 */
+		
 		return arp;
 	}
 
@@ -301,7 +294,7 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 			routerARP(sw, packetIn, cntx);
 			return Command.CONTINUE;
 		}
-		
+
 		/**
 		 * Neste momento o controlador ja conhece origem e destino, então é possível
 		 * criar um fluxo para tratar os demais pacotes
@@ -334,83 +327,62 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 		}
 
 		DatapathId srcDataPath = srcAttachPoints[0].getNodeId();
+		IOFSwitch srcSwitch = serviceSwitch.getSwitch(srcDataPath);
+		OFPort srcPort = srcAttachPoints[0].getPortId();
 		DatapathId dstDataPath = dstAttachPoints[0].getNodeId();
+		IOFSwitch dstSwitch = serviceSwitch.getSwitch(dstDataPath);
+		OFPort dstPort = srcAttachPoints[0].getPortId();
 
 		Path shortestPath = serviceRoutingEngine.getPath(srcDataPath, dstDataPath);
-		logger.info("Path {}", shortestPath);
 
+		NodePortTuple dstNode = new NodePortTuple(dstDataPath, dstPort);
+		logger.info("Path {}", shortestPath);
+		Set<DatapathId> added = new HashSet<DatapathId>();
+		List<NodePortTuple> nodePaths = shortestPath.getPath();
+		
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// MAKE FLOW -- para cada node de route
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		Set<DatapathId> added = new HashSet<DatapathId>();
-		if (shortestPath.getPath().isEmpty()) {
-			OFPort port = dstAttachPoints[0].getPortId();
+		
+		if(nodePaths.isEmpty()) {
+			nodePaths.add(dstNode);
+		}
+		for (NodePortTuple node : nodePaths) {
+			if (node.getNodeId().equals(dstNode.getNodeId())) {
+				node = dstNode;
+			}
+			if (!added.contains(node.getNodeId())) {
+				OFFlowMod.Builder flowBuilder;
+				flowBuilder = sw.getOFFactory().buildFlowAdd();
+				flowBuilder.setMatch(match);
+				flowBuilder.setCookie(U64.of(COOKIE));
+				flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+				flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+				flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+				flowBuilder.setPriority(FLOWMOD_PRIORITY);
+				flowBuilder.setOutPort(node.getPortId());
+				Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+				flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+														// idl-timeout ocorrer
+				flowBuilder.setFlags(flags);
 
-			OFFlowMod.Builder flowBuilder;
-			flowBuilder = sw.getOFFactory().buildFlowAdd();
-			flowBuilder.setMatch(match);
-			flowBuilder.setCookie(U64.of(COOKIE));
-			flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
-			flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
-			flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
-			flowBuilder.setPriority(FLOWMOD_PRIORITY);
-			flowBuilder.setOutPort(port);
-			Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-			flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
-													// idl-timeout ocorrer
-			flowBuilder.setFlags(flags);
+				// ACTIONS
+				List<OFAction> actions = new ArrayList<OFAction>();
+				actions.add(sw.getOFFactory().actions().buildOutput().setPort(node.getPortId()).setMaxLen(0xffFFffFF)
+						.build());
 
-			// ACTIONS
-			List<OFAction> actions = new ArrayList<OFAction>();
-			actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
-
-			// INSERT IN SWITCH OF PATH
-			IOFSwitch swit = serviceSwitch.getSwitch(dstDataPath);
-			FlowModUtils.setActions(flowBuilder, actions, swit);
-			swit.write(flowBuilder.build());
-			logger.info("Flow ADD node{} port{}", swit, port);
-			OFMessageUtils.writePacketOutForPacketIn(swit, packetIn, port);
-		} else {
-			OFPort firstPort = null;
-			for (NodePortTuple node : shortestPath.getPath()) {
-				DatapathId dataPathId = node.getNodeId();
-				OFPort port = node.getPortId();
-				if(firstPort==null) {
-					firstPort = port;
-				}
-				if (!added.contains(dataPathId)) {// Para que não forme ciclos, então escolhe apenas uma rota
-					added.add(dataPathId);
-					OFFlowMod.Builder flowBuilder;
-					flowBuilder = sw.getOFFactory().buildFlowAdd();
-					flowBuilder.setMatch(match);
-					flowBuilder.setCookie(U64.of(COOKIE));
-					flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
-					flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
-					flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
-					flowBuilder.setPriority(FLOWMOD_PRIORITY);
-					flowBuilder.setOutPort(port);
-					Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-					flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
-															// idl-timeout ocorrer
-					flowBuilder.setFlags(flags);
-
-					// ACTIONS
-					List<OFAction> actions = new ArrayList<OFAction>();
-					actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
-
-					// INSERT IN SWITCH OF PATH
-					IOFSwitch swit = serviceSwitch.getSwitch(dataPathId);
-					FlowModUtils.setActions(flowBuilder, actions, swit);
-					swit.write(flowBuilder.build());
-					logger.info("Flow ADD node{} port{}", swit, port);				
-					
-				}
-
+				// INSERT IN SWITCH OF PATH
+				IOFSwitch swit = serviceSwitch.getSwitch(node.getNodeId());
+				FlowModUtils.setActions(flowBuilder, actions, swit);
+				swit.write(flowBuilder.build());
+				logger.info("Flow ADD node{} port{}", swit, node.getNodeId());
 			}
 			
-			
-			OFMessageUtils.writePacketOutForPacketIn(sw, packetIn, firstPort);
+			OFMessageUtils.writePacketOutForPacketIn(srcSwitch, packetIn, nodePaths.get(0).getPortId());
+			logger.info("Pacote repassado para switch{} porta{}", srcSwitch, nodePaths.get(0).getPortId());
 		}
+		
+
 		return Command.CONTINUE;
 
 	}
