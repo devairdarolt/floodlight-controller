@@ -1,0 +1,8 @@
+#!/bin/bash
+sudo mn --controller=remote,ip=192.168.1.215,port=6653  --switch=ovsk,protocols=OpenFlow15 --topo=linear,4 --mac 
+
+#clear
+sudo mn -c
+
+#clear queues
+sudo ovs-vsctl --all destroy QoS
