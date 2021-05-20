@@ -1,21 +1,43 @@
 /**
+ * @author devairdarolt
+ * 
  * Objetivo dessa classe é fazer o roteamento utilizando L3
  * 
+ * Sempre que ocorre mudanças nos estados de links/switch/devices
+ * o controlador gera eventos que são gerenciados por esse módulo
+ * de tal forma que este tenha como finalidade manter as tabelas dos
+ * switches atualizadas para que não ocorra packes-in
  * 
+ * Funcionalidades:
+ * 
+ * 1. AddDevice >>> quando um host é adcionado a rede é configurado todas as tabelas dos switchs para que tenha rotas ah este host
+ * 2. RmvDevice >>> quando um host é removido, então remove-se todas as regras de todos os switchs associados a este host
+ * 3. LDUP      >>> quando um kink é atualizado para UP/DOWN é necessário atualizar as regras de fluxos de todos os switchs para que o roteamento continue funcionando *  
  */
 package net.floodlightcontroller.tutorial.five;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.projectfloodlight.openflow.protocol.OFFlowMod;
+import org.projectfloodlight.openflow.protocol.OFFlowModFlags;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
-import org.projectfloodlight.openflow.protocol.OFType;
+import org.projectfloodlight.openflow.protocol.action.OFAction;
+import org.projectfloodlight.openflow.protocol.match.Match;
+import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.types.DatapathId;
+import org.projectfloodlight.openflow.types.IPv4Address;
+import org.projectfloodlight.openflow.types.MacAddress;
+import org.projectfloodlight.openflow.types.OFBufferId;
+import org.projectfloodlight.openflow.types.OFPort;
+import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,24 +53,35 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.IDeviceService;
+import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryListener;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.linkdiscovery.Link;
+import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.topology.ITopologyService;
+import net.floodlightcontroller.util.FlowModUtils;
 
+@SuppressWarnings("unused")
 public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDiscoveryListener, IDeviceListener {
 	public static Logger log = LoggerFactory.getLogger(Forward5.class);
 	public static final String MODULE_NAME = Forward5.class.getSimpleName();
-	// Interface to Floodlight core for interacting with connected switches
-	private IFloodlightProviderService floodlightProv;
-	// Interface to link discovery service
-	private ILinkDiscoveryService linkDiscProv;
-	// Interface to switch service
+	private static final long COOKIE = 333;
+	private static final int FLOWMOD_DEFAULT_IDLE_TIMEOUT = 0;// Infinite
+	private static final int FLOWMOD_DEFAULT_HARD_TIMEOUT = 0;
+	private static final int FLOWMOD_PRIORITY = Integer.MAX_VALUE;// Prioridade muito baixa
+
+	// dependencies
+	private IFloodlightProviderService serviceProvider;
+	private ILinkDiscoveryService serviceLinkDiscovery;
 	private IOFSwitchService serviceSwitch;
-	// Interface to device manager service
-	private IDeviceService deviceProv;
+	private IDeviceService serviceDevice;
+	private IRoutingService serviceRouting;
+	private ITopologyService serviceTopology;
 	// Switch table in which rules should be installed
+
 	private byte table;
-	// Map of hosts to devices
+
+	// uteis
 	private Map<IDevice, Host> knownHosts;
 
 	@Override
@@ -74,21 +107,66 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		log.info("DEVICE ADD {}", device);
 
 		// TODO: check if host exists and update
-		if(this.knownHosts!=null && this.knownHosts.containsKey(device)) {
+		if (this.knownHosts != null && this.knownHosts.containsKey(device)) {
 			log.info("Device exists. Update");
 		}
-		
-		Host host = new Host(device, this.floodlightProv, this.serviceSwitch);
+
+		Host host = new Host(device);
 		// We only care about a new host if we know its IP
 		if (host.getIPv4Address() != null) {
-			log.info(String.format("Host %s added", host.getName()));
-			this.knownHosts.put(device, host);
 			/*****************************************************************/
 			/* TODO: Update routing: add rules to route to new host */
 			/*****************************************************************/
 
+			log.info(String.format("Host %s added", host.getName()));
+			this.knownHosts.put(device, host);
+			for (SwitchPort attPoints : device.getAttachmentPoints()) {
+				DatapathId swId = attPoints.getNodeId();
+				IOFSwitch sw = serviceSwitch.getSwitch(swId);
+				OFPort port = attPoints.getPortId();
+				Match match = makeMatch(host, sw);
+				makeFlow(match, sw,port);
+				
+				
+				
+				
+			}
+
 		}
 
+	}
+
+	private void makeFlow(Match match, IOFSwitch sw, OFPort port) {
+		OFFlowMod.Builder flowBuilder;
+		flowBuilder = sw.getOFFactory().buildFlowAdd();
+		flowBuilder.setMatch(match);
+		flowBuilder.setCookie(U64.of(COOKIE));
+		flowBuilder.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+		flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+		flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+		flowBuilder.setPriority(FLOWMOD_PRIORITY);
+		flowBuilder.setOutPort(port);
+		Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+		flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+												// idl-timeout ocorrer
+		flowBuilder.setFlags(flags);
+
+		// ACTIONS
+		List<OFAction> actions = new ArrayList<OFAction>();
+		actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
+
+		// INSERT IN SWITCH OF PATH		
+		FlowModUtils.setActions(flowBuilder, actions, sw);
+		sw.write(flowBuilder.build());
+
+	}
+
+	private Match makeMatch(Host host, IOFSwitch sw) {
+		Match.Builder mb = sw.getOFFactory().buildMatch();
+		mb.setExact(MatchField.ETH_DST, host.getMACAddress());
+		mb.setExact(MatchField.IPV4_DST, host.getIPv4Address());
+		Match match = mb.build();
+		return match;
 	}
 
 	@Override
@@ -111,7 +189,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		log.info("DEVICE MOVED {}", device);
 		Host host = this.knownHosts.get(device);
 		if (null == host) {
-			host = new Host(device, this.floodlightProv, this.serviceSwitch);
+			host = new Host(device);
 			this.knownHosts.put(device, host);
 		}
 
@@ -234,10 +312,10 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	@Override
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		log.info("Inicializando {}", MODULE_NAME);
-		Map<String, String> config = context.getConfigParams(this);		
-		this.floodlightProv = context.getServiceImpl(IFloodlightProviderService.class);
-		this.linkDiscProv = context.getServiceImpl(ILinkDiscoveryService.class);
-		this.deviceProv = context.getServiceImpl(IDeviceService.class);
+		Map<String, String> config = context.getConfigParams(this);
+		this.serviceProvider = context.getServiceImpl(IFloodlightProviderService.class);
+		this.serviceLinkDiscovery = context.getServiceImpl(ILinkDiscoveryService.class);
+		this.serviceDevice = context.getServiceImpl(IDeviceService.class);
 		this.serviceSwitch = context.getServiceImpl(IOFSwitchService.class);
 		this.knownHosts = new ConcurrentHashMap<IDevice, Host>();
 
@@ -248,11 +326,11 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		log.info("Startup {}", MODULE_NAME);
 		// Not used in routing, this routing type do not make packets, all host is pré
 		// configurated in events discovery
-		// this.floodlightProv.addOFSwitchListener(this);
-		// this.floodlightProv.addOFMessageListener(OFType.PACKET_IN, this);
-		// this.floodlightProv.addOFMessageListener(OFType.FLOW_REMOVED, this);
-		this.linkDiscProv.addListener(this);
-		this.deviceProv.addListener(this);
+		// this.serviceProvider.addOFSwitchListener(this);
+		// this.serviceProvider.addOFMessageListener(OFType.PACKET_IN, this);
+		// this.serviceProvider.addOFMessageListener(OFType.FLOW_REMOVED, this);
+		this.serviceLinkDiscovery.addListener(this);
+		this.serviceDevice.addListener(this);
 
 		/*********************************************************************/
 		/* TODO: Initialize variables or perform startup tasks, if necessary */
@@ -282,7 +360,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 
 	// Get a list of all active links in the network.
 	private Collection<Link> getLinks() {
-		return linkDiscProv.getLinks().keySet();
+		return serviceLinkDiscovery.getLinks().keySet();
 	}
 
 	/**
@@ -297,22 +375,18 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	private class Host {
 		/* Meta-data about the host from Floodlight's device manager */
 		private IDevice device;
-		private IOFSwitchService switchService;
-
-		/* Floodlight module which is needed to lookup switches by DPID */
-		private IFloodlightProviderService floodlightProv;
+		private OFPort hostPort;
 
 		/**
 		 * Create a host.
 		 * 
-		 * @param device         meta-data about the host from Floodlight's device
-		 *                       manager
-		 * @param floodlightProv Floodlight module to lookup switches by DPID
+		 * @param device          meta-data about the host from Floodlight's device
+		 *                        manager
+		 * @param serviceProvider Floodlight module to lookup switches by DPID
 		 */
-		public Host(IDevice device, IFloodlightProviderService floodlightProv, IOFSwitchService switchService) {
+		public Host(IDevice device) {
 			this.device = device;
-			this.floodlightProv = floodlightProv;
-			this.switchService = switchService;
+			log.info("Host {}", Forward5.this.knownHosts);
 		}
 
 		/**
@@ -329,8 +403,8 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * 
 		 * @return the host's MAC address
 		 */
-		public long getMACAddress() {
-			return this.device.getMACAddress().getLong();
+		public MacAddress getMACAddress() {
+			return this.device.getMACAddress();
 		}
 
 		/**
@@ -338,11 +412,11 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * 
 		 * @return the host's IPv4 address, null if unknown
 		 */
-		public Integer getIPv4Address() {
+		public IPv4Address getIPv4Address() {
 			if (null == this.device.getIPv4Addresses() || 0 == this.device.getIPv4Addresses().length) {
 				return null;
 			}
-			return this.device.getIPv4Addresses()[0].getInt();
+			return this.device.getIPv4Addresses()[0];
 		}
 
 		/**
@@ -355,7 +429,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 				return null;
 			}
 
-			IOFSwitch sw = switchService.getActiveSwitch(this.device.getAttachmentPoints()[0].getNodeId());
+			IOFSwitch sw = serviceSwitch.getActiveSwitch(this.device.getAttachmentPoints()[0].getNodeId());
 
 			return sw;
 
