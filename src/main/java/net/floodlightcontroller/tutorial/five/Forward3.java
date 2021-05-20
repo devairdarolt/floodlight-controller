@@ -1,15 +1,14 @@
-/**
- * 
- * 
- * 
- */
 package net.floodlightcontroller.tutorial.five;
 
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
 import org.projectfloodlight.openflow.protocol.OFFlowModFlags;
@@ -17,21 +16,16 @@ import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
 import org.projectfloodlight.openflow.protocol.OFPacketOut;
 import org.projectfloodlight.openflow.protocol.OFType;
-
+import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
-import org.projectfloodlight.openflow.types.DatapathId;
-import org.projectfloodlight.openflow.types.EthType;
-import org.projectfloodlight.openflow.types.IPv4Address;
-import org.projectfloodlight.openflow.types.IPv6Address;
-import org.projectfloodlight.openflow.types.MacAddress;
-import org.projectfloodlight.openflow.types.OFBufferId;
-import org.projectfloodlight.openflow.types.OFPort;
-import org.projectfloodlight.openflow.types.U64;
-import org.projectfloodlight.openflow.types.VlanVid;
+import org.projectfloodlight.openflow.types.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.floodlightcontroller.core.FloodlightContext;
+import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
 import net.floodlightcontroller.core.IOFSwitch;
 import net.floodlightcontroller.core.internal.IOFSwitchService;
@@ -40,127 +34,39 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.core.types.NodePortTuple;
-import net.floodlightcontroller.debugcounter.IDebugCounterService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
-import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
 import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
-import net.floodlightcontroller.linkdiscovery.Link;
-//Outras dependencias
-import net.floodlightcontroller.core.IFloodlightProviderService;
-import java.util.ArrayList;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.restserver.IRestApiService;
+import net.floodlightcontroller.packet.IPacket;
+import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Path;
 import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.util.FlowModUtils;
 import net.floodlightcontroller.util.OFMessageUtils;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-/**
- * @author devairdarolt
- *
- */
+@SuppressWarnings("unused")
 public class Forward3 implements IOFMessageListener, IFloodlightModule {
-
-	// more flow-mod defaults
 	public static final long COOKIE = 200;
-	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 20; // in seconds
-	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
-	protected static short FLOWMOD_PRIORITY = 100;
-
+	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
+	private static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
+	private static short FLOWMOD_PRIORITY = 100;
 	// dependencies
-	protected IFloodlightProviderService serviceFloodlightProvider;
-	protected IRoutingService serviceRoutingEngine;
-	protected IOFSwitchService serviceSwitch;
-	protected IDeviceService serviceDeviceManager;
-	protected ITopologyService serviceTopology;
-	protected ILinkDiscoveryService serviceLink;
-
+	private IFloodlightProviderService serviceFloodlightProvider;
+	private IRoutingService serviceRoutingEngine;
+	private IOFSwitchService serviceSwitch;
+	private IDeviceService serviceDeviceManager;
+	private ITopologyService serviceTopology;
+	private ILinkDiscoveryService serviceLink;
 	// Uteis
-	protected int countARPflood;
-	protected int countARPdrop;
-	protected Map<IOFSwitch, Set<OFBufferId>> mapSwitchBufferId;
-	protected Map<MacAddress, Map<IOFSwitch, OFPort>> gateWays;
+	private Map<IOFSwitch, Set<OFBufferId>> mapSwitchBufferId;
+	private Map<MacAddress, Map<IOFSwitch, OFPort>> gateWays;
+	private Set<String> listaMACs;
+	private static Logger logger;
 
-	protected Set<String> listaMACs;
-	protected static Logger logger;
-
-	/**
-	 * Agora precisamos conectá-lo ao sistema de carregamento do módulo. Dizemos ao
-	 * carregador de módulo que dependemos dele, modificando a função
-	 * getModuleDependencies ().
-	 */
-	@Override
-	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
-		Collection<Class<? extends IFloodlightService>> lista = new ArrayList<Class<? extends IFloodlightService>>();
-		lista.add(IFloodlightProviderService.class);
-		lista.add(IRoutingService.class);
-		lista.add(IOFSwitchService.class);
-		lista.add(IDeviceService.class);
-		lista.add(ITopologyService.class);
-		lista.add(ILinkDiscoveryService.class);
-		return lista;
-
-	}
-
-	@Override
-	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-
-		return null;
-	}
-
-	/**
-	 * Inicializa as variáveis da nossa classe... Init é chamado no início do
-	 * processo de inicialização do controlador. Ele é executado principalmente para
-	 * carregar dependências e inicializar estruturas de dados.
-	 */
-	@Override
-	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
-		serviceFloodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
-		serviceRoutingEngine = context.getServiceImpl(IRoutingService.class);
-		serviceSwitch = context.getServiceImpl(IOFSwitchService.class);
-		serviceDeviceManager = context.getServiceImpl(IDeviceService.class);
-		serviceTopology = context.getServiceImpl(ITopologyService.class);
-		serviceLink = context.getServiceImpl(ILinkDiscoveryService.class);
-
-		mapSwitchBufferId = new ConcurrentHashMap<IOFSwitch, Set<OFBufferId>>();
-		gateWays = new ConcurrentHashMap<MacAddress, Map<IOFSwitch, OFPort>>();
-		listaMACs = new ConcurrentSkipListSet<String>();
-		logger = LoggerFactory.getLogger(this.getClass());
-		countARPflood = 0;
-		countARPdrop = 0;
-	}
-
-	/**
-	 * Tratamento da mensagem de entrada de PACKET_IN. Agora é hora de implementar o
-	 * listner básico. Vamos registrar as mensagens PACKET_IN em nosso método de
-	 * inicialização. Nesse método temos a garantia de que outros módulos dos quais
-	 * dependemos já foram inicializados.
-	 */
-	@Override
-	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
-		serviceFloodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
-		serviceFloodlightProvider.addOFMessageListener(OFType.FLOW_REMOVED, this);
-		serviceFloodlightProvider.addOFMessageListener(OFType.EXPERIMENTER, this);
-		logger.info("{} adicionado aos listner", this.getClass().getSimpleName());
-		// agora Forward1 será avisado toda vez que um PACKET_IN chegar ao controlador
-
-	}
-
-	/**
-	 * Também precisamos inserir um ID para nosso listner. Isso é feito na chamada
-	 * getName ().
-	 */
 	@Override
 	public String getName() {
 		return this.getClass().getSimpleName();
@@ -179,26 +85,57 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 	}
 
 	@Override
-	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
+	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
 
 		return null;
 	}
 
-	/**
-	 * Agora temos que definir o comportamento que queremos para as mensagens
-	 * PACKET_IN. Observe que retornamos Command.CONTINUE para permitir que esta
-	 * mensagem continue a ser tratada por outros manipuladores PACKET_IN também.
-	 * 
-	 * @param IOFSwitch sw - switch que gerou o packet in
-	 * @param OFMessage msg
-	 */
+	@Override
+	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
+		return null;
+	}
+
+	@Override
+	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
+		Collection<Class<? extends IFloodlightService>> lista = new ArrayList<Class<? extends IFloodlightService>>();
+		lista.add(IFloodlightProviderService.class);
+		lista.add(IRoutingService.class);
+		lista.add(IOFSwitchService.class);
+		lista.add(IDeviceService.class);
+		lista.add(ITopologyService.class);
+		lista.add(ILinkDiscoveryService.class);
+		return lista;
+	}
+
+	@Override
+	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
+		serviceFloodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
+		serviceRoutingEngine = context.getServiceImpl(IRoutingService.class);
+		serviceSwitch = context.getServiceImpl(IOFSwitchService.class);
+		serviceDeviceManager = context.getServiceImpl(IDeviceService.class);
+		serviceTopology = context.getServiceImpl(ITopologyService.class);
+		serviceLink = context.getServiceImpl(ILinkDiscoveryService.class);
+
+		mapSwitchBufferId = new ConcurrentHashMap<IOFSwitch, Set<OFBufferId>>();
+		gateWays = new ConcurrentHashMap<MacAddress, Map<IOFSwitch, OFPort>>();
+		listaMACs = new ConcurrentSkipListSet<String>();
+		logger = LoggerFactory.getLogger(this.getClass());
+		logger.info("{} init", this.getClass().getSimpleName());
+
+	}
+
+	@Override
+	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
+		serviceFloodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
+		serviceFloodlightProvider.addOFMessageListener(OFType.FLOW_REMOVED, this);
+		serviceFloodlightProvider.addOFMessageListener(OFType.EXPERIMENTER, this);
+		logger.info("{} startup", this.getClass().getSimpleName());
+	}
+
 	@Override
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
-
 		switch (msg.getType()) {
 		case PACKET_IN:
-			OFPort inPort = OFMessageUtils.getInPort(OFPacketIn.class.cast(msg));
-			logger.info("packet-in recebido de {} porta {}", sw, inPort);
 			mapGateways(sw, OFPacketIn.class.cast(msg), cntx);
 			return processPacketInRoute(sw, OFPacketIn.class.cast(msg), cntx);
 		// return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
@@ -214,74 +151,6 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 		}
 
 		return Command.CONTINUE; // Comando para que a menssagem constinue sendo processada por outros listners
-
-	}
-
-	private void mapGateways(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
-		//
-		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-		MacAddress srcMac = eth.getSourceMACAddress();
-		if (!gateWays.containsKey(srcMac)) {
-			gateWays.put(srcMac, new ConcurrentHashMap<IOFSwitch, OFPort>());
-			if (gateWays.get(srcMac).size() == 0) {
-				OFPort port = OFMessageUtils.getInPort(pi);
-				gateWays.get(srcMac).put(sw, port);
-
-				logger.info("MAC{} visto primeiro em {}", srcMac, sw);
-			}
-		}
-
-	}
-
-	/**
-	 * Esta função repassa todos os pacotes com multicast e bradcast diretamente
-	 * para os gateways que possuem hosts ativos. Caso o controlador ainda não
-	 * conheça o host então ele não envia O correto seria o pacote ser enviado em
-	 * todas as portas dos switches para verificar se existe algum host nessa porta,
-	 * porém ao fazer um flood em rede de muitos caminhos ocorre muita multiplicação
-	 * de pacote
-	 * 
-	 * FIX 1 -- É possível resolver este problea da seguinte forma:
-	 * 
-	 * 1. gerando um cookie aleatório para marcar o pacote
-	 * 
-	 * 2. criando uma lista para cada switch que memoriza os cookies
-	 * 
-	 * 3. se o switch S ja processou esse cookie uma vez então descarta
-	 * 
-	 * 4. se ainda não processou então faz o flood
-	 * 
-	 * 
-	 * @param sw
-	 * @param packetIn
-	 * @param cntx
-	 * @return
-	 */
-	private boolean routerARP(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
-		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-		MacAddress srcMac = eth.getSourceMACAddress();
-		MacAddress dstMac = eth.getDestinationMACAddress();
-		boolean arp = false;
-		IDevice srcDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_SRC_DEVICE);
-		if (dstMac.isMulticast() || dstMac.isBroadcast()) {
-			Collection<? extends IDevice> devices = serviceDeviceManager.getAllDevices();
-			for (IDevice device : devices) {
-				if (!device.equals(srcDevice)) {
-					SwitchPort[] attachPoints = device.getAttachmentPoints();
-					if (attachPoints != null && attachPoints.length > 0) {
-						DatapathId gateway = attachPoints[0].getNodeId();
-						OFPort portId = attachPoints[0].getPortId();
-						IOFSwitch swt = serviceSwitch.getSwitch(gateway);
-						OFMessageUtils.writePacketOutForPacketIn(swt, packetIn, portId);
-						logger.info("Pacote repassado para switch{} porta{}", swt, portId);
-						logger.info("destino:{}", device.getMACAddress());
-					}
-				}
-			}
-		}
-
-		
-		return arp;
 	}
 
 	private Command processPacketInRoute(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
@@ -303,14 +172,12 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 		// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-		VlanVid vlan = VlanVid.ofVlan(eth.getVlanID());
 		Match.Builder mb = sw.getOFFactory().buildMatch();
 		mb.setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST, dstMac);
 		Match match = mb.build();
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// GET ROUTE --
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		logger.info("Criando fluxo entre {} {} ", srcMac, dstMac);
 
 		IDevice srcDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_SRC_DEVICE);
 		IDevice dstDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_DST_DEVICE);
@@ -331,149 +198,176 @@ public class Forward3 implements IOFMessageListener, IFloodlightModule {
 		OFPort srcPort = srcAttachPoints[0].getPortId();
 		DatapathId dstDataPath = dstAttachPoints[0].getNodeId();
 		IOFSwitch dstSwitch = serviceSwitch.getSwitch(dstDataPath);
-		OFPort dstPort = srcAttachPoints[0].getPortId();
+		OFPort dstPort = dstAttachPoints[0].getPortId();
 
-		Path shortestPath = serviceRoutingEngine.getPath(srcDataPath, dstDataPath);
+		Path shortestPath = serviceRoutingEngine.getPath(srcDataPath, srcPort, dstDataPath, dstPort);
 
-		NodePortTuple dstNode = new NodePortTuple(dstDataPath, dstPort);
 		logger.info("Path {}", shortestPath);
 		Set<DatapathId> added = new HashSet<DatapathId>();
-		List<NodePortTuple> nodePaths = shortestPath.getPath();
-		
+		List<NodePortTuple> nodePaths = new ArrayList<NodePortTuple>();
+		nodePaths.addAll(shortestPath.getPath());
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// MAKE FLOW -- para cada node de route
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		
-		if(nodePaths.isEmpty()) {
+
+		NodePortTuple dstNode = new NodePortTuple(dstDataPath, dstPort);
+		if (nodePaths.isEmpty()) {
 			nodePaths.add(dstNode);
 		}
-		for (NodePortTuple node : nodePaths) {
-			if (node.getNodeId().equals(dstNode.getNodeId())) {
-				node = dstNode;
-			}
-			if (!added.contains(node.getNodeId())) {
-				OFFlowMod.Builder flowBuilder;
-				flowBuilder = sw.getOFFactory().buildFlowAdd();
-				flowBuilder.setMatch(match);
-				flowBuilder.setCookie(U64.of(COOKIE));
-				flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
-				flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
-				flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
-				flowBuilder.setPriority(FLOWMOD_PRIORITY);
-				flowBuilder.setOutPort(node.getPortId());
-				Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-				flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
-														// idl-timeout ocorrer
-				flowBuilder.setFlags(flags);
 
-				// ACTIONS
-				List<OFAction> actions = new ArrayList<OFAction>();
-				actions.add(sw.getOFFactory().actions().buildOutput().setPort(node.getPortId()).setMaxLen(0xffFFffFF)
-						.build());
+		// nodePaths = {sw1:in, sw1:out, sw2:in, sw2:out}
+		Iterator<NodePortTuple> nodePathsItr = nodePaths.iterator();
+		while (nodePathsItr.hasNext()) {
 
-				// INSERT IN SWITCH OF PATH
-				IOFSwitch swit = serviceSwitch.getSwitch(node.getNodeId());
-				FlowModUtils.setActions(flowBuilder, actions, swit);
-				swit.write(flowBuilder.build());
-				logger.info("Flow ADD node{} port{}", swit, node.getNodeId());
-			}
-			
-			OFMessageUtils.writePacketOutForPacketIn(srcSwitch, packetIn, nodePaths.get(0).getPortId());
-			logger.info("Pacote repassado para switch{} porta{}", srcSwitch, nodePaths.get(0).getPortId());
+			NodePortTuple node_port_in = nodePathsItr.next();// Link in/back
+
+			NodePortTuple node_port_out = nodePathsItr.next();// Link in/back
+			logger.info("addFlow node [{}]", node_port_out);
+			addFlow(sw, match, node_port_out);
+
 		}
-		
-
+		// Agora que o fluxo foi inserido... devolve o pacote ao switch que gerou o
+		// packet in
+		OFMessageUtils.writePacketOutForPacketIn(sw, packetIn, nodePaths.get(1).getPortId());
 		return Command.CONTINUE;
-
 	}
 
-	/**
-	 * Função para processar o packet-in
-	 * 
-	 * @param sw
-	 * @param cast
-	 * @param cntx
-	 * @return
-	 */
-	private Command processPacketIn(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
+	private void addFlow(IOFSwitch sw, Match match, NodePortTuple node) {
+		OFFlowMod.Builder flowBuilder;
+		flowBuilder = sw.getOFFactory().buildFlowAdd();
+		flowBuilder.setMatch(match);
+		flowBuilder.setCookie(U64.of(COOKIE));
+		flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+		flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
+		flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
+		flowBuilder.setPriority(FLOWMOD_PRIORITY);
+		flowBuilder.setOutPort(node.getPortId());
+		Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
+		flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+												// idl-timeout ocorrer
+		flowBuilder.setFlags(flags);
 
-		OFPort inPort = OFMessageUtils.getInPort(pi);
+		// ACTIONS
+		List<OFAction> actions = new ArrayList<OFAction>();
+		actions.add(sw.getOFFactory().actions().buildOutput().setPort(node.getPortId()).setMaxLen(0xffFFffFF).build());
 
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// INSERT IN SWITCH OF PATH
+		IOFSwitch swit = serviceSwitch.getSwitch(node.getNodeId());
+		FlowModUtils.setActions(flowBuilder, actions, swit);
+		swit.write(flowBuilder.build());
+		// logger.info("Flow ADD node{} port {}", swit, node.getPortId());
+	}
+
+	public void pushPacket(IPacket packet, IOFSwitch sw, OFBufferId bufferId, OFPort inPort, OFPort outPort,
+			FloodlightContext cntx, boolean flush) {
+
+		OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
+
+		// set actions
+		List<OFAction> actions = new ArrayList<>();
+		actions.add(sw.getOFFactory().actions().buildOutput().setPort(outPort).setMaxLen(Integer.MAX_VALUE).build());
+
+		pob.setActions(actions);
+
+		// set buffer_id, in_port
+		pob.setBufferId(bufferId);
+		OFMessageUtils.setInPort(pob, inPort);
+
+		// set data - only if buffer_id == -1
+		if (pob.getBufferId() == OFBufferId.NO_BUFFER) {
+			if (packet == null) {
+				logger.error("BufferId is not set and packet data is null. " + "Cannot send packetOut. "
+						+ "srcSwitch={} inPort={} outPort={}", new Object[] { sw, inPort, outPort });
+				return;
+			}
+			byte[] packetData = packet.serialize();
+			pob.setData(packetData);
+		}
+
+		sw.write(pob.build());
+	}
+
+	private boolean routerARP(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
+		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+		MacAddress srcMac = eth.getSourceMACAddress();
+		MacAddress dstMac = eth.getDestinationMACAddress();
+		boolean proxyArp = true;// do proxy arp reply
+		IDevice srcDevice = serviceDeviceManager.fcStore.get(cntx, serviceDeviceManager.CONTEXT_SRC_DEVICE);
+		
+		//Tenta fazer o ARP Reply caso não consiga faz o flood
+		if (!proxyArpReply(sw, packetIn, cntx)) {
+
+			logger.info("Proxi arp fails. Flood ARP...");
+			OFMessageUtils.writePacketOutForPacketIn(sw, packetIn, OFPort.FLOOD);
+		}
+
+		return true;
+	}
+
+	protected boolean proxyArpReply(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
+		logger.info("Proxy ARP Reply");
 
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
-		MacAddress srcMac = eth.getSourceMACAddress();
-		MacAddress dstMac = eth.getDestinationMACAddress();
-		Match.Builder mb = sw.getOFFactory().buildMatch();
-		mb.setExact(MatchField.IN_PORT, inPort).setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST,
-				dstMac);
-		Match match = mb.build();
+		// retrieve original arp to determine host configured gw IP address
+		if (!(eth.getPayload() instanceof ARP))
+			return false;
+		ARP arpRequest = (ARP) eth.getPayload();
+		// have to do proxy arp reply since at this point we cannot determine the
+		// requesting application type
 
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// MAKE ACTIONS TO REACTIVE PATH
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Temos o endereço IP, então encontraremos o MAC desse IP
 
-		OFPort outport = null;
-
-		List<OFAction> actions = new ArrayList<OFAction>();
-		actions.add(sw.getOFFactory().actions().buildOutput().setPort(outport).setMaxLen(0xffFFffFF).build());
-
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// PACKET-OUT --- Cria um packet out para a porta
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		boolean packetOut = true; // Devolve o pacote ao switche com ações do que deve ser feito
-		if (packetOut) {
-			OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
-			pob.setActions(actions);
-
-			// If the switch doens't support buffering set the buffer id to be none
-			// otherwise it'll be the the buffer id of the PacketIn
-			if (sw.getBuffers() == 0) {
-				// We set the PI buffer id here so we don't have to check again below
-				pi = pi.createBuilder().setBufferId(OFBufferId.NO_BUFFER).build();
-				pob.setBufferId(OFBufferId.NO_BUFFER);
-			} else {
-				pob.setBufferId(pi.getBufferId());
-			}
-			// If the buffer id is none or the switch doesn's support buffering
-			// we send the data with the packet out
-			if (pi.getBufferId() == OFBufferId.NO_BUFFER) {
-				byte[] packetData = pi.getData();
-				pob.setData(packetData);
+		MacAddress replySenderMac = null;
+		IPv4Address replySenderIPv4 = null;
+		for (IDevice device : serviceDeviceManager.getAllDevices()) {
+			for (IPv4Address ip : device.getIPv4Addresses()) {
+				if (ip.equals(arpRequest.getTargetProtocolAddress())) {
+					replySenderMac = device.getMACAddress();
+					replySenderIPv4 = ip;
+				}
 			}
 
-			OFMessageUtils.setInPort(pob, inPort);
-			sw.write(pob.build());
 		}
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// ADD-FLOW
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		boolean addFlow = true;// Adiciona fluxo na tabela de fluxo para tratar os demais pacotes
-		if (addFlow) {
-			OFFlowMod.Builder flowBuilder;
-			flowBuilder = sw.getOFFactory().buildFlowAdd();
-			flowBuilder.setMatch(match);
-			flowBuilder.setCookie(U64.of(COOKIE));
-			flowBuilder.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT);
-			flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
-			flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
-			flowBuilder.setPriority(FLOWMOD_PRIORITY);
-			flowBuilder.setOutPort(outport);
-			/*
-			 * Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-			 * flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser
-			 * removido quando o idl-timeout // ocorrer flowBuilder.setFlags(flags);
-			 */
-
-			List<OFAction> al = new ArrayList<OFAction>();
-			al.add(sw.getOFFactory().actions().buildOutput().setPort(outport).setMaxLen(0xffFFffFF).build());
-			FlowModUtils.setActions(flowBuilder, actions, sw);
-			sw.write(flowBuilder.build());
+		// se não encontrar as informações para contruir o pacote (10.0.0.2 at
+		// 00:00:00:02) então flood
+		if (replySenderIPv4 == null || replySenderMac == null) {
+			return false;
 		}
+		// generate proxy ARP reply
+		IPacket arpReply = new Ethernet().setSourceMACAddress(replySenderMac)
+				.setDestinationMACAddress(eth.getSourceMACAddress()).setEtherType(EthType.ARP)
+				.setVlanID(eth.getVlanID()).setPriorityCode(eth.getPriorityCode())
+				.setPayload(new ARP().setHardwareType(ARP.HW_TYPE_ETHERNET).setProtocolType(ARP.PROTO_TYPE_IP)
+						.setHardwareAddressLength((byte) 6).setProtocolAddressLength((byte) 4).setOpCode(ARP.OP_REPLY)
+						.setSenderHardwareAddress(replySenderMac).setSenderProtocolAddress(replySenderIPv4)
+						.setTargetHardwareAddress(eth.getSourceMACAddress())
+						.setTargetProtocolAddress(arpRequest.getSenderProtocolAddress()));
 
-		return Command.CONTINUE;
+		// push ARP reply out
+		pushPacket(arpReply, sw, OFBufferId.NO_BUFFER, OFPort.ANY,
+				(pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort()
+						: pi.getMatch().get(MatchField.IN_PORT)),
+				cntx, true);
+
+		return true;
+
 	}
+
+	private void mapGateways(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
+		//
+		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+		MacAddress srcMac = eth.getSourceMACAddress();
+		if (!gateWays.containsKey(srcMac)) {
+			gateWays.put(srcMac, new ConcurrentHashMap<IOFSwitch, OFPort>());
+			if (gateWays.get(srcMac).size() == 0) {
+				OFPort port = OFMessageUtils.getInPort(pi);
+				gateWays.get(srcMac).put(sw, port);
+
+				logger.info("MAC {} visto pela primeira vez em {}", srcMac, sw);
+			}
+		}
+
+	}
+
 }
