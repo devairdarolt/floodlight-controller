@@ -234,8 +234,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	@Override
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		log.info("Inicializando {}", MODULE_NAME);
-		Map<String, String> config = context.getConfigParams(this);
-		// this.table = Byte.parseByte(config.get("table"));
+		Map<String, String> config = context.getConfigParams(this);		
 		this.floodlightProv = context.getServiceImpl(IFloodlightProviderService.class);
 		this.linkDiscProv = context.getServiceImpl(ILinkDiscoveryService.class);
 		this.deviceProv = context.getServiceImpl(IDeviceService.class);
