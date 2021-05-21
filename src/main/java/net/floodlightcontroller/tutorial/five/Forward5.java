@@ -50,6 +50,7 @@ import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
+import net.floodlightcontroller.core.types.NodePortTuple;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.IDeviceService;
@@ -58,6 +59,7 @@ import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryListener;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.linkdiscovery.Link;
 import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.routing.Path;
 import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.util.FlowModUtils;
 
@@ -65,10 +67,10 @@ import net.floodlightcontroller.util.FlowModUtils;
 public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDiscoveryListener, IDeviceListener {
 	public static Logger log = LoggerFactory.getLogger(Forward5.class);
 	public static final String MODULE_NAME = Forward5.class.getSimpleName();
-	private static final long COOKIE = 333;
+	private static final long COOKIE = 33;
 	private static final int FLOWMOD_DEFAULT_IDLE_TIMEOUT = 0;// Infinite
 	private static final int FLOWMOD_DEFAULT_HARD_TIMEOUT = 0;
-	private static final int FLOWMOD_PRIORITY = Integer.MAX_VALUE;// Prioridade muito baixa
+	private static final int FLOWMOD_PRIORITY = 100;// Prioridade muito baixa
 
 	// dependencies
 	private IFloodlightProviderService serviceProvider;
@@ -120,16 +122,34 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 
 			log.info(String.format("Host %s added", host.getName()));
 			this.knownHosts.put(device, host);
+
 			for (SwitchPort attPoints : device.getAttachmentPoints()) {
 				DatapathId swId = attPoints.getNodeId();
 				IOFSwitch sw = serviceSwitch.getSwitch(swId);
 				OFPort port = attPoints.getPortId();
-				Match match = makeMatch(host, sw);
-				makeFlow(match, sw,port);
 				
 				
+				Match match = makeMatch(device, sw);
+				makeFlow(match, sw, port);
+				log.info("FLOW ADD SW {}",sw);
 				
 				
+				if ("".equals("1")) {
+
+					Set<DatapathId> allSwitches = serviceSwitch.getAllSwitchDpids();
+					for (DatapathId swt : allSwitches) {
+						if (!swt.equals(swId)) {
+							List<NodePortTuple> path = serviceRouting.getPath(swt, swId).getPath();
+							NodePortTuple nodePort = path.get(0);
+							IOFSwitch ofSwitch = serviceSwitch.getSwitch(swt);
+							OFPort ofPort = nodePort.getPortId();
+							match = makeMatch(device, ofSwitch);
+							makeFlow(match, ofSwitch, ofPort);
+							log.info("Adicionado fluxo em sw {} porta {}", ofSwitch, ofPort);
+						}
+					}
+				}
+
 			}
 
 		}
@@ -140,7 +160,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		OFFlowMod.Builder flowBuilder;
 		flowBuilder = sw.getOFFactory().buildFlowAdd();
 		flowBuilder.setMatch(match);
-		flowBuilder.setCookie(U64.of(COOKIE));
+		flowBuilder.setCookie(U64.ZERO);
 		flowBuilder.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
@@ -155,16 +175,16 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		List<OFAction> actions = new ArrayList<OFAction>();
 		actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
 
-		// INSERT IN SWITCH OF PATH		
+		// INSERT IN SWITCH OF PATH
 		FlowModUtils.setActions(flowBuilder, actions, sw);
 		sw.write(flowBuilder.build());
 
 	}
 
-	private Match makeMatch(Host host, IOFSwitch sw) {
+	private Match makeMatch(IDevice device, IOFSwitch sw) {
 		Match.Builder mb = sw.getOFFactory().buildMatch();
-		mb.setExact(MatchField.ETH_DST, host.getMACAddress());
-		mb.setExact(MatchField.IPV4_DST, host.getIPv4Address());
+		mb.setExact(MatchField.ETH_DST, device.getMACAddress()).setExact(MatchField.IPV4_DST,
+				device.getIPv4Addresses()[0]);
 		Match match = mb.build();
 		return match;
 	}
@@ -225,7 +245,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 
 	@Override
 	public void linkDiscoveryUpdate(List<LDUpdate> updateList) {
-		log.info("DISCOVERY UPDATE{}", updateList);
+		//log.info("DISCOVERY UPDATE{}", updateList);
 		for (LDUpdate update : updateList) {
 			// If we only know the switch & port for one end of the link, then
 			// the link must be from a switch to a host
@@ -317,6 +337,8 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		this.serviceLinkDiscovery = context.getServiceImpl(ILinkDiscoveryService.class);
 		this.serviceDevice = context.getServiceImpl(IDeviceService.class);
 		this.serviceSwitch = context.getServiceImpl(IOFSwitchService.class);
+		this.serviceRouting = context.getServiceImpl(IRoutingService.class);
+		this.serviceTopology = context.getServiceImpl(ITopologyService.class);
 		this.knownHosts = new ConcurrentHashMap<IDevice, Host>();
 
 	}
@@ -395,7 +417,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * @return the host's name
 		 */
 		public String getName() {
-			return String.format("h%d", this.getMACAddress());
+			return String.format("h{}", this.getMACAddress().getLong());
 		}
 
 		/**
