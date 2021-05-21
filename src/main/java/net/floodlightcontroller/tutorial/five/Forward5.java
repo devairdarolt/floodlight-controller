@@ -33,6 +33,7 @@ import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.types.DatapathId;
+import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
@@ -64,7 +65,7 @@ import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.util.FlowModUtils;
 
 @SuppressWarnings("unused")
-public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDiscoveryListener, IDeviceListener {
+public class Forward5 implements IFloodlightModule, IDeviceListener {
 	public static Logger log = LoggerFactory.getLogger(Forward5.class);
 	public static final String MODULE_NAME = Forward5.class.getSimpleName();
 	private static final long COOKIE = 33;
@@ -106,52 +107,56 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 
 	@Override
 	public void deviceAdded(IDevice device) {
-		log.info("DEVICE ADD {}", device);
-
+		log.info("DEVICE ADD {} {}", device.getMACAddress(),device.getIPv4Addresses());
 		// TODO: check if host exists and update
-		if (this.knownHosts != null && this.knownHosts.containsKey(device)) {
-			log.info("Device exists. Update");
+		List<IDevice> keyToRemove = new ArrayList<IDevice>();
+		if(knownHosts.containsKey(device)) {
+			log.info(">>>>>>>>>>>>>>> Device exists. Updating");
 		}
-
-		Host host = new Host(device);
-		// We only care about a new host if we know its IP
-		if (host.getIPv4Address() != null) {
-			/*****************************************************************/
-			/* TODO: Update routing: add rules to route to new host */
-			/*****************************************************************/
-
-			log.info(String.format("Host %s added", host.getName()));
-			this.knownHosts.put(device, host);
-
-			for (SwitchPort attPoints : device.getAttachmentPoints()) {
-				DatapathId swId = attPoints.getNodeId();
-				IOFSwitch sw = serviceSwitch.getSwitch(swId);
-				OFPort port = attPoints.getPortId();
-				
-				
-				Match match = makeMatch(device, sw);
-				makeFlow(match, sw, port);
-				log.info("FLOW ADD SW {}",sw);
-				
-				
-				if ("".equals("1")) {
-
-					Set<DatapathId> allSwitches = serviceSwitch.getAllSwitchDpids();
-					for (DatapathId swt : allSwitches) {
-						if (!swt.equals(swId)) {
-							List<NodePortTuple> path = serviceRouting.getPath(swt, swId).getPath();
-							NodePortTuple nodePort = path.get(0);
-							IOFSwitch ofSwitch = serviceSwitch.getSwitch(swt);
-							OFPort ofPort = nodePort.getPortId();
-							match = makeMatch(device, ofSwitch);
-							makeFlow(match, ofSwitch, ofPort);
-							log.info("Adicionado fluxo em sw {} porta {}", ofSwitch, ofPort);
-						}
-					}
+		Host host = null;
+		if (this.knownHosts != null) {
+			for(Entry<IDevice, Host> entry:knownHosts.entrySet()) {
+				if(entry.getKey().getMACAddress().equals(device.getMACAddress())) {
+					knownHosts.put(device, knownHosts.get(entry.getKey()));
+					host = knownHosts.get(device);
+					keyToRemove.add(entry.getKey());
+					log.info("Device exists. Updating");
 				}
-
 			}
+					
+		}
+		if(host==null) {
+			host = new Host(device);
+		}
+		
+		// We only care about a new host if we know its IP
+		if (host.getIPv4Address() != null) {			
+			//Adiciona fluxo para receber os pacotes do gateway 
+						
+			makeFlow(makeL2Match(host, host.getSwitch()), host.getSwitch(), host.getSwitchPort());
+			makeFlow(makeL3Match(host, host.getSwitch()), host.getSwitch(), host.getSwitchPort());
+			
+			log.info("FLOW ADD in host switch [{}] port[{}]", host.getSwitch(),host.getSwitchPort());
+			//Adiciona fluxo para receber broadcast
+			makeFlow(host.getSwitch().getOFFactory().buildMatch().setExact(MatchField.ETH_DST, MacAddress.BROADCAST).build(), host.getSwitch(), OFPort.FLOOD);
+			//1. Adiciona fluxo em todos os switches
+			//             Similar a colocar uma placa em cada cidade apontando como chegar em joinville
+			//2. Adiciona também regras para tratar broadcast e multcast em todos os switches
+			for(DatapathId switchId:serviceSwitch.getAllSwitchDpids()) {
+				//O gateway ja possui um flow 
+				if(!switchId.equals(host.getSwitch().getId())) {
+					IOFSwitch sw = serviceSwitch.getSwitch(switchId);
+					for(NodePortTuple node:serviceRouting.getPath(switchId, host.getSwitch().getId()).getPath()) {
+						log.info("Node {}",node);
+						
+					}
+					
+				}
+			}
+			
+			
 
+			
 		}
 
 	}
@@ -180,12 +185,23 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		sw.write(flowBuilder.build());
 
 	}
-
-	private Match makeMatch(IDevice device, IOFSwitch sw) {
-		Match.Builder mb = sw.getOFFactory().buildMatch();
-		mb.setExact(MatchField.ETH_DST, device.getMACAddress()).setExact(MatchField.IPV4_DST,
-				device.getIPv4Addresses()[0]);
+	private Match makeL3Match(Host host, IOFSwitch sw) {
+		Match.Builder mb = sw.getOFFactory().buildMatch();	
+		
+		mb.setExact(MatchField.ETH_TYPE,EthType.IPv4);//Pre-requisito para match de IPV4
+		mb.setExact(MatchField.IPV4_DST, host.getIPv4Address());
+		
 		Match match = mb.build();
+		log.info("Match L3 build to [{},{}] in switch[{}]", new Object[] {host.getMACAddress(),host.getIPv4Address(),sw.getId()});
+		return match;
+	}
+
+	private Match makeL2Match(Host host, IOFSwitch sw) {
+		Match.Builder mb = sw.getOFFactory().buildMatch();
+		mb.setExact(MatchField.ETH_DST, host.getMACAddress());	
+		
+		Match match = mb.build();
+		log.info("Match L2 build to [{},{}] in switch[{}]", new Object[] {host.getMACAddress(),host.getIPv4Address(),sw.getId()});
 		return match;
 	}
 
@@ -227,6 +243,32 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	@Override
 	public void deviceIPV4AddrChanged(IDevice device) {
 		log.info("DEVICE IPv4 CHANGED {}", device);
+		/*****************************************************************/
+		/* TODO: Update routing: add rules to route to new host */
+		/*****************************************************************/			
+		Host host = this.knownHosts.get(device);		
+		//Adiciona fluxo para receber os pacotes do gateway 
+					
+		makeFlow(makeL2Match(host, host.getSwitch()), host.getSwitch(), host.getSwitchPort());
+		makeFlow(makeL3Match(host, host.getSwitch()), host.getSwitch(), host.getSwitchPort());
+		
+		log.info("FLOW ADD in host switch [{}] port[{}]", host.getSwitch(),host.getSwitchPort());
+		//Adiciona fluxo para receber broadcast
+		makeFlow(host.getSwitch().getOFFactory().buildMatch().setExact(MatchField.ETH_DST, MacAddress.BROADCAST).build(), host.getSwitch(), OFPort.FLOOD);
+		//1. Adiciona fluxo em todos os switches
+		//             Similar a colocar uma placa em cada cidade apontando como chegar em joinville
+		//2. Adiciona também regras para tratar broadcast e multcast em todos os switches
+		for(DatapathId switchId:serviceSwitch.getAllSwitchDpids()) {
+			//O gateway ja possui um flow 
+			if(!switchId.equals(host.getSwitch().getId())) {
+				IOFSwitch sw = serviceSwitch.getSwitch(switchId);
+				for(NodePortTuple node:serviceRouting.getPath(switchId, host.getSwitch().getId()).getPath()) {
+					log.info("Node {}",node);
+					
+				}
+				
+			}
+		}
 		this.deviceAdded(device);
 
 	}
@@ -241,70 +283,6 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	public void deviceVlanChanged(IDevice device) {
 		log.info("DEVICE VLAN CHANGED{}", device);
 		this.deviceAdded(device);
-	}
-
-	@Override
-	public void linkDiscoveryUpdate(List<LDUpdate> updateList) {
-		//log.info("DISCOVERY UPDATE{}", updateList);
-		for (LDUpdate update : updateList) {
-			// If we only know the switch & port for one end of the link, then
-			// the link must be from a switch to a host
-			/*
-			 * if ( update.getDst()!=null && 0 == update.getDst().getLong()) {
-			 * log.info(String.format("Link {}:{} -> host updated", update.getSrc(),
-			 * update.getSrcPort())); }else{// Otherwise, the link is between two switches
-			 * log.info(String.format("Link {}:{} -> {}:{} updated", update.getSrc(),
-			 * update.getSrcPort(), update.getDst(), update.getDstPort())); }
-			 */
-		}
-
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts */
-		/*********************************************************************/
-
-	}
-
-	@Override
-	public void switchAdded(DatapathId switchId) {
-		log.info("SWITCH ADD {}", switchId);
-		IOFSwitch sw = this.serviceSwitch.getSwitch(switchId);
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts */
-
-		/*********************************************************************/
-	}
-
-	@Override
-	public void switchRemoved(DatapathId switchId) {
-		log.info("SWITCH REMOVED {}", switchId);
-		IOFSwitch sw = this.serviceSwitch.getSwitch(switchId);
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts */
-		/*********************************************************************/
-	}
-
-	@Override
-	public void switchActivated(DatapathId switchId) {
-		log.info("SWITCH ACTVATE {}", switchId);
-
-	}
-
-	@Override
-	public void switchPortChanged(DatapathId switchId, OFPortDesc port, PortChangeType type) {
-		log.info("SWITCH PORT CHANGED {}", switchId);
-
-	}
-
-	@Override
-	public void switchChanged(DatapathId switchId) {
-		log.info("SWITCH CHANGED {}", switchId);
-
-	}
-
-	@Override
-	public void switchDeactivated(DatapathId switchId) {
-		log.info("SWITCH DEACTIVATE {}", switchId);
-
 	}
 
 	@Override
@@ -351,7 +329,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		// this.serviceProvider.addOFSwitchListener(this);
 		// this.serviceProvider.addOFMessageListener(OFType.PACKET_IN, this);
 		// this.serviceProvider.addOFMessageListener(OFType.FLOW_REMOVED, this);
-		this.serviceLinkDiscovery.addListener(this);
+
 		this.serviceDevice.addListener(this);
 
 		/*********************************************************************/
@@ -390,6 +368,7 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 	 * Host
 	 * 
 	 * 
+	 * Criado para auxiliar o controle de Devices na rede
 	 * 
 	 * @author devairdarolt
 	 *
@@ -407,8 +386,16 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * @param serviceProvider Floodlight module to lookup switches by DPID
 		 */
 		public Host(IDevice device) {
-			this.device = device;
-			log.info("Host {}", Forward5.this.knownHosts);
+			this.device = device;			
+		}
+
+		public OFPort getSwitchPort() {
+			for (SwitchPort port : this.device.getAttachmentPoints()) {
+				return port.getPortId();
+			}
+
+			return null;
+
 		}
 
 		/**
@@ -435,10 +422,10 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * @return the host's IPv4 address, null if unknown
 		 */
 		public IPv4Address getIPv4Address() {
-			if (null == this.device.getIPv4Addresses() || 0 == this.device.getIPv4Addresses().length) {
-				return null;
+			for (IPv4Address ip : this.device.getIPv4Addresses()) {
+				return ip;
 			}
-			return this.device.getIPv4Addresses()[0];
+			return null;
 		}
 
 		/**
@@ -447,27 +434,14 @@ public class Forward5 implements IFloodlightModule, IOFSwitchListener, ILinkDisc
 		 * @return the switch to which the host is connected, null if unknown
 		 */
 		public IOFSwitch getSwitch() {
-			if (null == this.device.getAttachmentPoints() || 0 == this.device.getAttachmentPoints().length) {
-				return null;
+			for (SwitchPort att : this.device.getAttachmentPoints()) {
+				return Forward5.this.serviceSwitch.getSwitch(att.getNodeId());
 			}
-
-			IOFSwitch sw = serviceSwitch.getActiveSwitch(this.device.getAttachmentPoints()[0].getNodeId());
-
-			return sw;
+			return null;
 
 		}
 
-		/**
-		 * Get the port on the switch to which the host is connected.
-		 * 
-		 * @return the port to which the host is connected, null if unknown
-		 */
-		public Integer getPort() {
-			if (null == this.device.getAttachmentPoints() || 0 == this.device.getAttachmentPoints().length) {
-				return null;
-			}
-			return this.device.getAttachmentPoints()[0].getPortId().getPortNumber();
-		}
+		
 
 		/**
 		 * Checks whether the host is attached to some switch.
