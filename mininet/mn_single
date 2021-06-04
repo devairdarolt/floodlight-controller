@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sudo mn --controller=remote,ip=192.168.1.216,port=6653  --switch=ovsk,protocols=OpenFlow13 --topo=single,2 --mac
+sudo mn --controller=remote,ip=localhost,port=6653  --switch=ovsk,protocols=OpenFlow13 --topo=single,2 --mac
 
 #clear
 sudo mn -c

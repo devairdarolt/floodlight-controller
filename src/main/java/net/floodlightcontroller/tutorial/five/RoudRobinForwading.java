@@ -80,7 +80,7 @@ import net.floodlightcontroller.virtualnetwork.VirtualNetworkFilter;
 @SuppressWarnings("unused")
 public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener {
 	public static final long COOKIE = 333;
-	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 10; // in seconds
+	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
 	private static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
 	private static short FLOWMOD_PRIORITY = 100;
 
@@ -101,7 +101,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 	protected DeviceListenerImpl deviceListener;
 	protected Map<IDevice, SwitchPort> knowDevices;
 	protected OFMessageDamper messageDamper;
-
+	protected Set<IOFSwitch> edgeSwitchSet;
 	@Override
 	public String getName() {
 
@@ -142,8 +142,10 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
 
-		// Packets in create before flow completed
-		if (!isEdgeSwitch(sw)) {
+		// Packets in create before flowAdd completed/ talvez seja melhor devolver ao switch
+		// quando isso acontece perdesse alguns números da sequencia
+		if (!isEdgeSwitch(sw)) {			
+			log.info("Not switch edge:",sw.getId());
 			return Command.CONTINUE;
 		}
 
@@ -156,11 +158,13 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		log.info("\n\n");
 		log.info("src {} dst {} - sw {}", srcMac, dstMac, sw.getId());
 		if (eth.getEtherType().equals(EthType.ARP)) {
-			if (eth.isBroadcast() || eth.isMulticast()) {
+			if (eth.isBroadcast() ) {
 				processARPbroadcastOrMulticast(sw, packetIn, inPort);
 				return Command.CONTINUE;
-			} // else process normal src/dst packets
-
+			}else if(eth.isMulticast()){
+				return Command.CONTINUE;
+			}
+			// else process normal src/dst packets
 		}
 
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -249,10 +253,14 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 	}
 
 	private boolean isEdgeSwitch(IOFSwitch sw) {
-		// FIXME get logic edgeSwitches
-		if (sw.getId().getLong() <= 8L) {
-			return true;
+		if(this.edgeSwitchSet==null || this.edgeSwitchSet.isEmpty()) {
+			this.edgeSwitchSet = getEdgesSwitches();
 		}
+		for(IOFSwitch swt:this.edgeSwitchSet) {
+			if(swt.equals(sw)) {
+				return true;
+			}
+		}		
 		return false;
 	}
 
@@ -264,7 +272,24 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 			}
 		}
 	}
-
+	
+	//Edge is switches conected to a host
+	private Set<IOFSwitch> getEdgesSwitches() {
+		Set<NodePortTuple> list = getBroadcastPorts();
+		Set<IOFSwitch> swSet = new HashSet<>();
+		swSet.addAll(edgeSwitchSet);
+		if(swSet!= null && !swSet.isEmpty()) {
+			return swSet;
+		}else {
+			for(NodePortTuple node:list) {
+				IOFSwitch sw = serviceSwitch.getActiveSwitch(node.getNodeId());
+				swSet.add(sw);
+			}
+			
+		}
+		
+		return swSet;
+	}
 	private Set<NodePortTuple> getBroadcastPorts() {
 		// FIXME: Quando o controlador não conhece o DST DEVICE não é possível ober o
 		// MAC
@@ -302,7 +327,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 				A.add(node);
 			}
 		}
-
+		log.info("broadcast ports {}",A);
 		return A;
 
 	}
@@ -479,9 +504,11 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 		roundRobin = new RR();
 		knowDevices = new ConcurrentHashMap<IDevice, SwitchPort>();
+		edgeSwitchSet = new HashSet<IOFSwitch>();
 
 	}
 
+	
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		serviceDeviceManager.addListener(this.deviceListener);
@@ -489,15 +516,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 	}
 
-	// Auxiliares
-	public SwitchPort findSwitchPort(MacAddress src) {
-		for (Entry<IDevice, SwitchPort> entry : knowDevices.entrySet()) {
-			if (src.equals(entry.getKey().getMACAddress())) {
-				return entry.getValue();
-			}
-		}
-		return null;
-	}
+	
 	// RR
 
 	protected class RR {
@@ -520,7 +539,12 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 			knowPaths = new HashMap<Key, ConcurrentLinkedDeque<Path>>();
 
 		}
-
+		/**
+		 * Recebe origem/destino re retora o próximo caminho de uma lista circular
+		 * @param src
+		 * @param dst
+		 * @return
+		 */
 		public List<NodePortTuple> getNextPath(MacAddress src, MacAddress dst) {
 			ConcurrentLinkedDeque<Path> paths = null;
 			// Find in rrlist
@@ -529,43 +553,44 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 					paths = entry.getValue();
 				}
 			}
-			IDevice srcDevice = findDevice(src);
-			IDevice dstDevice = findDevice(dst);
-			SwitchPort srcSwPort = findSwitchPort(src);
-			SwitchPort dstSwPort = findSwitchPort(dst);
+			
+			SwitchPort srcSwPort = deviceListener.findSwitchPort(src);
+			SwitchPort dstSwPort = deviceListener.findSwitchPort(dst);
 			// se for null então pecisa criar um path list com a chave src/dst
-
 			Path path = null;
-			if (dstDevice == null || dstSwPort == null) {
+			if (dstSwPort == null) {
 				log.info("Controlador não conhece o destino");
 				return null;
 			}
 			if (paths == null) {
-
+				//Pode ser a primeira vez que a rota esta sendo utilizada
 				List<Path> pathList = serviceRoutingEngine.getPathsFast(srcSwPort.getNodeId(), dstSwPort.getNodeId(),
 						serviceRoutingEngine.getMaxPathsToCompute());
 
 				// siguinifica que o destino pertence ao mesmo switch que gerou o packet in
-				
+				log.info("pathList: {}",pathList);
 				paths = new ConcurrentLinkedDeque<Path>();
 				paths.addAll(pathList);
 				Key key = new Key(src, dst);
 				knowPaths.put(key, paths);
 			}
 			
-			if(paths==null || paths.isEmpty()) {
+			if(paths==null) {
 				log.info("Não existe path entre src/dst, os dois podem pertencer ao mesmo switch");
 				return null;
 			}
-			// repassa o primeiro para o final da lista
-			path = paths.removeFirst();
-			paths.addLast(path);
-
 			List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
-
+			
+			if(!paths.isEmpty()) {
+				//log.info("Não existe path entre src/dst, os dois podem pertencer ao mesmo switch");
+				// repassa o primeiro para o final da lista
+				path = paths.removeFirst();
+				paths.addLast(path);
+				listNodes.addAll(path.getPath());
+			}
+			
 			// Caso o src e dst estejam no mesmo switch o caminho é vazio, porém ainda é
-			// necessário encontrar a porta
-			listNodes.addAll(path.getPath());
+			// necessário adcionar a porta			
 			listNodes.add(new NodePortTuple(dstSwPort.getNodeId(), dstSwPort.getPortId()));
 
 			ArrayDeque<DatapathId> aux = new ArrayDeque<>();
@@ -596,6 +621,17 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 	// IDeviceListener
 	class DeviceListenerImpl implements IDeviceListener {
+		// Auxiliares
+		public SwitchPort findSwitchPort(MacAddress src) {
+			for (Entry<IDevice, SwitchPort> entry : knowDevices.entrySet()) {
+				if (src.equals(entry.getKey().getMACAddress())) {
+					return entry.getValue();
+				}
+			}
+			return null;
+		}
+		
+		
 		@Override
 		public void deviceAdded(IDevice device) {
 			log.info("DEVICE ADD {}", device);
@@ -617,14 +653,21 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 				knowDevices.put(device, attachmentPoint);
 				break;
 			}
-
-			log.info("Devices list {}", knowDevices);
+			
 		}
 
 		@Override
 		public void deviceRemoved(IDevice device) {
-			// if device is a gateway remove
-			MacAddress mac = device.getMACAddress();
+			log.info("DEVICE REMOVED {}", device);
+			IDevice key = null;
+			for(Entry<IDevice, SwitchPort> entry:knowDevices.entrySet()) {
+				if(device.getMACAddress().equals(entry.getKey().getMACAddress())) {
+					key = entry.getKey();					
+				}
+			}
+			if(key!=null) {
+				knowDevices.remove(key);
+			}			
 
 		}
 
@@ -653,7 +696,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 		@Override
 		public String getName() {
-			return RoudRobinForwading.this.getName();
+			return DeviceListenerImpl.class.getName();
 		}
 
 		@Override
