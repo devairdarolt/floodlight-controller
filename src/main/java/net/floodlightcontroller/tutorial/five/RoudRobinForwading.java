@@ -43,7 +43,6 @@ import org.restlet.engine.header.RecipientInfoWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import jdk.internal.org.jline.utils.Log;
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -62,6 +61,7 @@ import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.linkdiscovery.Link;
+import net.floodlightcontroller.linkdiscovery.internal.LinkInfo;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPacket;
@@ -141,25 +141,26 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 	}
 
 	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
+
+		// Packets in create before flow completed
+		if (!isEdgeSwitch(sw)) {
+			return Command.CONTINUE;
+		}
+
 		// log.info("Know Devices {}", knowDevices.keySet());
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		MacAddress srcMac = eth.getSourceMACAddress();
 		MacAddress dstMac = eth.getDestinationMACAddress();
 
-		log.info("src {} dst{}", srcMac, dstMac);
+		OFPort inPort = OFMessageUtils.getInPort(packetIn);
+		log.info("\n\n");
+		log.info("src {} dst {} - sw {}", srcMac, dstMac, sw.getId());
 		if (eth.getEtherType().equals(EthType.ARP)) {
-			if (!processARP(sw, packetIn, cntx)) {
-				// FIXME: Quando o controlador não conhece o DST DEVICE não é possível ober o
-				// MAC
-				// A solução seria fazer um flood broadcast, porém para evitar clonagem
-				// desnecessárias de pacotes nos loops
-				// é possivel utilizar operações de Set da seguinte forma
-				// -- U = set<switch,port> U; -- todos os links da rede
-				// -- B = set<switch,port> B; -- todos os links switch-switch
-				// -- A = B - U; Todas as portas desconhecidas pelo controlador
-				// -- flood(A); possíveis portas de hosts
-			}
-			return Command.CONTINUE;
+			if (eth.isBroadcast() || eth.isMulticast()) {
+				processARPbroadcastOrMulticast(sw, packetIn, inPort);
+				return Command.CONTINUE;
+			} // else process normal src/dst packets
+
 		}
 
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,21 +177,31 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		List<NodePortTuple> nodes = roundRobin.getNextPath(srcMac, dstMac);
 		if (nodes == null) {
 			log.info("Não foi encontrado Path entre src e dst");
-			return Command.CONTINUE;
+			if (isOnTheSameSwitch(srcMac, dstMac, sw)) {
+				nodes = new ArrayList<>();
+				for(Entry<IDevice, SwitchPort> entry: knowDevices.entrySet()) {
+					if(entry.getKey().getMACAddress().equals(srcMac)) {						
+						nodes.add(new NodePortTuple(entry.getValue().getNodeId(),entry.getValue().getPortId()));
+					}
+				}
+			} else {
+				return Command.CONTINUE;
+			}
+
 		}
-		log.info("NodesPort {}", nodes);
+		log.info("Path {}", nodes);
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// MAKE FLOW -- para cada node de route
+		// MAKE FLOW -- para cada node
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-		// nodePaths = {sw1:in, sw1:out, sw2:in, sw2:out}
 		Iterator<NodePortTuple> nodeItr = nodes.iterator();
-
-		NodePortTuple aux = null;
+		NodePortTuple outNodePort = null;
 
 		while (nodeItr.hasNext()) {
-
 			NodePortTuple node = nodeItr.next();// Link in
+			if (node.getNodeId().equals(sw.getId())) {
+				outNodePort = node;// store the first hop to create packet-out
+			}
 			log.info("addFlow {}", node);
 			addFlow(sw, match, node);
 
@@ -212,19 +223,88 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		 * 
 		 * packetOut.setData(outPacket.serialize());
 		 */
-		
-		log.info("Writing PacketOut, switch={}, output port={}",
-					new Object[] { sw, nodes.get(0).getPortId()});
-		
-		//messageDamper.write(sw, packetOut.build());
-		//log.info("Push packet out the last hop switch (true attachment point)");
 
-		// nodes.get(0) -- porta pela qual o pacote veio
-		// nodes.get(1) -- porta pela qual o pacote deve sair
-		log.info("PacketOut {}{}", sw, nodes.get(0).getPortId());
-		OFMessageUtils.writePacketOutForPacketIn(sw, packetIn, nodes.get(0).getPortId());
+		log.info("PacketOut {}{}", sw, outNodePort.getPortId());
+		writePacketOutForPacketIn(sw, packetIn, outNodePort.getPortId());
 
 		return Command.CONTINUE;
+	}
+
+	private boolean isOnTheSameSwitch(MacAddress srcMac, MacAddress dstMac, IOFSwitch sw) {
+		ArrayList<DatapathId> datapath = new ArrayList<>();
+		DatapathId sw1 = null;
+		DatapathId sw2 = null;
+		for (Entry<IDevice, SwitchPort> entry : knowDevices.entrySet()) {
+			if (entry.getKey().getMACAddress().equals(srcMac)) {
+				sw1 = entry.getValue().getNodeId();
+			}
+			if (entry.getKey().getMACAddress().equals(dstMac)) {
+				sw2 = entry.getValue().getNodeId();
+			}
+		}
+		if(sw1.equals(sw2)) {
+			return true;
+		}
+		return false;
+	}
+
+	private boolean isEdgeSwitch(IOFSwitch sw) {
+		// FIXME get logic edgeSwitches
+		if (sw.getId().getLong() <= 8L) {
+			return true;
+		}
+		return false;
+	}
+
+	private void processARPbroadcastOrMulticast(IOFSwitch sw, OFPacketIn packetIn, OFPort inPort) {
+		Set<NodePortTuple> broadcastPorts = getBroadcastPorts();
+		for (NodePortTuple node : broadcastPorts) {
+			if (!(node.getNodeId().equals(sw.getId()) && node.getPortId().equals(inPort))) {
+				writePacketOutForPacketIn(serviceSwitch.getSwitch(node.getNodeId()), packetIn, node.getPortId());
+			}
+		}
+	}
+
+	private Set<NodePortTuple> getBroadcastPorts() {
+		// FIXME: Quando o controlador não conhece o DST DEVICE não é possível ober o
+		// MAC
+		// A solução seria fazer um flood broadcast, porém para evitar clonagem
+		// desnecessárias de pacotes nos loops
+		// é possivel utilizar operações de Set da seguinte forma
+		// -- U = set<switch,port> U; -- todos os links da rede
+		// -- B = set<switch,port> B; -- todos os links switch-switch
+		// -- A = U - B; Todas as portas desconhecidas pelo controlador
+		// -- flood(A); possíveis portas de hosts
+		Set<NodePortTuple> A = new HashSet<NodePortTuple>();
+
+		// get B
+		Set<NodePortTuple> B = new HashSet<NodePortTuple>();
+		Map<Link, LinkInfo> internalLinks = serviceLinkDiscovery.getLinks();
+		for (Entry<Link, LinkInfo> entry : internalLinks.entrySet()) {
+			// log.info("key [{}] value [{}]", entry.getKey(), entry.getValue());
+
+			B.add(new NodePortTuple(entry.getKey().getSrc(), entry.getKey().getSrcPort()));
+			B.add(new NodePortTuple(entry.getKey().getDst(), entry.getKey().getDstPort()));
+		}
+
+		// Get U
+		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
+		Set<DatapathId> allswitches = serviceSwitch.getAllSwitchDpids();
+		for (DatapathId sw : allswitches) {
+			Set<OFPort> ports = serviceTopology.getPorts(sw);
+			for (OFPort port : ports) {
+				U.add(new NodePortTuple(sw, port));
+			}
+		}
+
+		for (NodePortTuple node : U) {
+			if (!B.contains(node)) {
+				A.add(node);
+			}
+		}
+
+		return A;
+
 	}
 
 	public static void writePacketOutForPacketIn(IOFSwitch sw, OFPacketIn packetInMessage, OFPort egressPort) {
@@ -233,7 +313,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 		// Set buffer_id, in_port, actions_len
 		pob.setBufferId(packetInMessage.getBufferId());
-		setInPort(pob, OFMessageUtils.getInPort(packetInMessage));
+		setInPort(pob, OFPort.ANY);
 
 		// set actions
 		List<OFAction> actions = new ArrayList<OFAction>(1);
@@ -287,8 +367,8 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		// logger.info("Flow ADD node{} port {}", swit, node.getPortId());
 	}
 
-	private boolean processARP(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
-		log.info("processARP");
+	private boolean processARPdst(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
+		log.info("processARPdst");
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		MacAddress srcMac = eth.getSourceMACAddress();
 		MacAddress dstMac = eth.getDestinationMACAddress();
@@ -461,18 +541,22 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 				return null;
 			}
 			if (paths == null) {
-				log.info("[{}]>>[{}] -- device[{}][{}] sw[{}][{}]",
-						new Object[] { src, dst, srcDevice, dstDevice, srcSwPort, dstSwPort });
+
 				List<Path> pathList = serviceRoutingEngine.getPathsFast(srcSwPort.getNodeId(), dstSwPort.getNodeId(),
 						serviceRoutingEngine.getMaxPathsToCompute());
+
+				// siguinifica que o destino pertence ao mesmo switch que gerou o packet in
+				
 				paths = new ConcurrentLinkedDeque<Path>();
 				paths.addAll(pathList);
 				Key key = new Key(src, dst);
 				knowPaths.put(key, paths);
-			} else {
-
 			}
-
+			
+			if(paths==null || paths.isEmpty()) {
+				log.info("Não existe path entre src/dst, os dois podem pertencer ao mesmo switch");
+				return null;
+			}
 			// repassa o primeiro para o final da lista
 			path = paths.removeFirst();
 			paths.addLast(path);
