@@ -142,12 +142,6 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 
 	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
 
-		// Packets in create before flowAdd completed/ talvez seja melhor devolver ao switch
-		// quando isso acontece perdesse alguns números da sequencia
-		if (!isEdgeSwitch(sw)) {			
-			log.info("Not switch edge:",sw.getId());
-			return Command.CONTINUE;
-		}
 
 		// log.info("Know Devices {}", knowDevices.keySet());
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
@@ -157,6 +151,15 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		OFPort inPort = OFMessageUtils.getInPort(packetIn);
 		log.info("\n\n");
 		log.info("src {} dst {} - sw {}", srcMac, dstMac, sw.getId());
+		// Packets in create before flowAdd completed/ talvez seja melhor devolver ao switch
+		// quando isso acontece perdesse alguns números da sequencia
+		if (!isEdgeSwitch(sw)) {			
+			log.info("Not switch edge: {}",sw);
+			return Command.CONTINUE;
+		}
+		
+		
+		
 		if (eth.getEtherType().equals(EthType.ARP)) {
 			if (eth.isBroadcast() ) {
 				processARPbroadcastOrMulticast(sw, packetIn, inPort);
@@ -228,6 +231,9 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		 * packetOut.setData(outPacket.serialize());
 		 */
 
+		if(outNodePort==null) {
+			log.info("outNodePort não pode ser null");
+		}
 		log.info("PacketOut {}{}", sw, outNodePort.getPortId());
 		writePacketOutForPacketIn(sw, packetIn, outNodePort.getPortId());
 
@@ -257,7 +263,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 			this.edgeSwitchSet = getEdgesSwitches();
 		}
 		for(IOFSwitch swt:this.edgeSwitchSet) {
-			if(swt.equals(sw)) {
+			if(swt.getId().equals(sw.getId())) {
 				return true;
 			}
 		}		
