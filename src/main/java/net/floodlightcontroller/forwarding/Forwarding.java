@@ -203,7 +203,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		OFPort inPort = OFMessageUtils.getInPort(pi);
 		NodePortTuple npt = new NodePortTuple(sw.getId(), inPort);
 
-		log.info("Processando PACKT_IN para >>> src[" + eth.getSourceMACAddress().toString() + "] dst["
+		log.trace("Processando PACKT_IN para >>> src[" + eth.getSourceMACAddress().toString() + "] dst["
 				+ eth.getDestinationMACAddress().toString() + "]");
 
 		if (decision != null) {
@@ -258,7 +258,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				}
 
 				if (!instance.isPresent()) {
-					log.info("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), inPort);
+					log.trace("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), inPort);
 					break;
 				}
 
@@ -313,7 +313,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL3Routing(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx, @Nonnull VirtualGatewayInstance gatewayInstance, OFPort inPort) {
 
-		log.info("doL3Routing");
+		log.trace("doL3Routing");
 		MacAddress gatewayMac = gatewayInstance.getGatewayMac();
 
 		if (eth.getEtherType() == EthType.IPv4) {
@@ -361,7 +361,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		OFPort srcPort = OFMessageUtils.getInPort(pi);
 
-		log.info("doL3ForwardFlow");
+		log.trace("doL3ForwardFlow");
 		MacAddress virtualGatewayMac = gateway.getGatewayMac();
 		DatapathId srcSw = sw.getId();
 		IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
@@ -598,7 +598,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL2Forwarding(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx) {
 
-		log.info("doL2Forwarding");
+		log.trace("doL2Forwarding");
 		if (isBroadcastOrMulticast(eth)) {
 			doFlood(sw, pi, decision, cntx);
 		} else {
@@ -624,7 +624,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
 		IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 
-		log.info("doL2ForwardFlow - DatapathId [" + srcSw.toString() + "]");
+		log.trace("doL2ForwardFlow - DatapathId [" + srcSw.toString() + "]");
 
 		if (dstDevice == null) {
 			log.debug("Destination device unknown. Flooding packet");
@@ -992,7 +992,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		// The packet in match will only contain the port number.
 		// We need to add in specifics for the hosts we're routing between.
 
-		log.info("createMatchFromPacket");
+		log.trace("createMatchFromPacket");
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
 		VlanVid vlan = null;
@@ -1167,7 +1167,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	 */
 	protected void doFlood(IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision, FloodlightContext cntx) {
 
-		log.info("doFlood");
+		log.trace("doFlood");
 
 		OFPort inPort = OFMessageUtils.getInPort(pi);
 		OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
@@ -1211,7 +1211,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL3Flood(VirtualGatewayInstance gateway, IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
-		log.info("doL3Flood");
+		log.trace("doL3Flood");
 
 		MacAddress gatewayMac = gateway.getGatewayMac();
 
@@ -1317,37 +1317,37 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		String tmp = configParameters.get("hard-timeout");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_HARD_TIMEOUT = ParseUtils.parseHexOrDecInt(tmp);
-			log.info("Default hard timeout set to {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			log.trace("Default hard timeout set to {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		} else {
-			log.info("Default hard timeout not configured. Using {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			log.trace("Default hard timeout not configured. Using {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		}
 		tmp = configParameters.get("idle-timeout");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_IDLE_TIMEOUT = ParseUtils.parseHexOrDecInt(tmp);
-			log.info("Default idle timeout set to {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			log.trace("Default idle timeout set to {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		} else {
-			log.info("Default idle timeout not configured. Using {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			log.trace("Default idle timeout not configured. Using {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		}
 		tmp = configParameters.get("table-id");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_TABLE_ID = TableId.of(ParseUtils.parseHexOrDecInt(tmp));
-			log.info("Default table ID set to {}.", FLOWMOD_DEFAULT_TABLE_ID);
+			log.trace("Default table ID set to {}.", FLOWMOD_DEFAULT_TABLE_ID);
 		} else {
-			log.info("Default table ID not configured. Using {}.", FLOWMOD_DEFAULT_TABLE_ID);
+			log.trace("Default table ID not configured. Using {}.", FLOWMOD_DEFAULT_TABLE_ID);
 		}
 		tmp = configParameters.get("priority");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_PRIORITY = ParseUtils.parseHexOrDecInt(tmp);
-			log.info("Default priority set to {}.", FLOWMOD_DEFAULT_PRIORITY);
+			log.trace("Default priority set to {}.", FLOWMOD_DEFAULT_PRIORITY);
 		} else {
-			log.info("Default priority not configured. Using {}.", FLOWMOD_DEFAULT_PRIORITY);
+			log.trace("Default priority not configured. Using {}.", FLOWMOD_DEFAULT_PRIORITY);
 		}
 		tmp = configParameters.get("set-send-flow-rem-flag");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG = Boolean.parseBoolean(tmp);
-			log.info("Default flags will be set to SEND_FLOW_REM {}.", FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG);
+			log.trace("Default flags will be set to SEND_FLOW_REM {}.", FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG);
 		} else {
-			log.info("Default flags will be empty.");
+			log.trace("Default flags will be empty.");
 		}
 		tmp = configParameters.get("match");
 		if (tmp != null) {
@@ -1364,7 +1364,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				FLOWMOD_DEFAULT_MATCH_TCP_FLAG = tmp.contains("flag") ? true : false;
 			}
 		}
-		log.info("Default flow matches set to: IN_PORT=" + FLOWMOD_DEFAULT_MATCH_IN_PORT + ", VLAN="
+		log.trace("Default flow matches set to: IN_PORT=" + FLOWMOD_DEFAULT_MATCH_IN_PORT + ", VLAN="
 				+ FLOWMOD_DEFAULT_MATCH_VLAN + ", MAC=" + FLOWMOD_DEFAULT_MATCH_MAC + ", IP=" + FLOWMOD_DEFAULT_MATCH_IP
 				+ ", FLAG=" + FLOWMOD_DEFAULT_MATCH_TCP_FLAG + ", TPPT=" + FLOWMOD_DEFAULT_MATCH_TRANSPORT);
 
@@ -1385,7 +1385,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				FLOWMOD_DEFAULT_MATCH_TRANSPORT_DST = tmp.contains("dst-transport") ? true : false;
 			}
 		}
-		log.info("Default detailed flow matches set to: SRC_MAC=" + FLOWMOD_DEFAULT_MATCH_MAC_SRC + ", DST_MAC="
+		log.trace("Default detailed flow matches set to: SRC_MAC=" + FLOWMOD_DEFAULT_MATCH_MAC_SRC + ", DST_MAC="
 				+ FLOWMOD_DEFAULT_MATCH_MAC_DST + ", SRC_IP=" + FLOWMOD_DEFAULT_MATCH_IP_SRC + ", DST_IP="
 				+ FLOWMOD_DEFAULT_MATCH_IP_DST + ", SRC_TPPT=" + FLOWMOD_DEFAULT_MATCH_TRANSPORT_SRC + ", DST_TPPT="
 				+ FLOWMOD_DEFAULT_MATCH_TRANSPORT_DST);
@@ -1396,10 +1396,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			if (!tmp.contains("yes") && !tmp.contains("yep") && !tmp.contains("true") && !tmp.contains("ja")
 					&& !tmp.contains("stimmt")) {
 				FLOOD_ALL_ARP_PACKETS = false;
-				log.info("Not flooding ARP packets. ARP flows will be inserted for known destinations");
+				log.trace("Not flooding ARP packets. ARP flows will be inserted for known destinations");
 			} else {
 				FLOOD_ALL_ARP_PACKETS = true;
-				log.info("Flooding all ARP packets. No ARP flows will be inserted");
+				log.trace("Flooding all ARP packets. No ARP flows will be inserted");
 			}
 		}
 
@@ -1408,9 +1408,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			REMOVE_FLOWS_ON_LINK_OR_PORT_DOWN = Boolean.parseBoolean(tmp);
 		}
 		if (REMOVE_FLOWS_ON_LINK_OR_PORT_DOWN) {
-			log.info("Flows will be removed on link/port down events");
+			log.trace("Flows will be removed on link/port down events");
 		} else {
-			log.info("Flows will not be removed on link/port down events");
+			log.trace("Flows will not be removed on link/port down events");
 		}
 	}
 
@@ -1436,7 +1436,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	@Override
 	public void switchRemoved(DatapathId switchId) {
 		l3manager.getAllVirtualGateways().stream().forEach(instance -> instance.removeSwitchFromInstance(switchId));
-		log.info("Handle switchRemoved. Switch {} removed from virtual gateway instance", switchId.toString());
+		log.trace("Handle switchRemoved. Switch {} removed from virtual gateway instance", switchId.toString());
 	}
 
 	@Override
@@ -1630,25 +1630,25 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 	@Override
 	public void deleteGatewayInstances() {
-		log.info("All virtual gateways deleted");
+		log.trace("All virtual gateways deleted");
 		l3manager.removeAllVirtualGateways();
 	}
 
 	@Override
 	public boolean deleteGatewayInstance(String name) {
-		log.info("Virtual gateway {} deleted", name);
+		log.trace("Virtual gateway {} deleted", name);
 		return l3manager.removeVirtualGateway(name);
 	}
 
 	@Override
 	public void addGatewayInstance(VirtualGatewayInstance gateway) {
-		log.info("A new virtual gateway {} created", gateway.getName());
+		log.trace("A new virtual gateway {} created", gateway.getName());
 		l3manager.addVirtualGateway(gateway);
 	}
 
 	@Override
 	public VirtualGatewayInstance updateVirtualGateway(String name, MacAddress newMac) {
-		log.info("Virtual gateway {} updated", name);
+		log.trace("Virtual gateway {} updated", name);
 		return l3manager.updateVirtualGateway(name, newMac);
 	}
 
@@ -1664,25 +1664,25 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 	@Override
 	public void removeAllVirtualInterfaces(VirtualGatewayInstance gateway) {
-		log.info("All virtual interfaces removed from gateway {}", gateway.getName());
+		log.trace("All virtual interfaces removed from gateway {}", gateway.getName());
 		l3manager.removeAllVirtualInterfaces(gateway);
 	}
 
 	@Override
 	public boolean removeVirtualInterface(String interfaceName, VirtualGatewayInstance gateway) {
-		log.info("Virtual gateway {} removed from gateway {}", interfaceName, gateway.getName());
+		log.trace("Virtual gateway {} removed from gateway {}", interfaceName, gateway.getName());
 		return l3manager.removeVirtualInterface(interfaceName, gateway);
 	}
 
 	@Override
 	public void addVirtualInterface(VirtualGatewayInstance gateway, VirtualGatewayInterface intf) {
-		log.info("A new virtual interface {} created for gateway {}", intf.getInterfaceName(), gateway.getName());
+		log.trace("A new virtual interface {} created for gateway {}", intf.getInterfaceName(), gateway.getName());
 		l3manager.addVirtualInterface(gateway, intf);
 	}
 
 	@Override
 	public void updateVirtualInterface(VirtualGatewayInstance gateway, VirtualGatewayInterface intf) {
-		log.info("Virtual interface {} in gateway {} updated ", intf.getInterfaceName(), gateway.getName());
+		log.trace("Virtual interface {} in gateway {} updated ", intf.getInterfaceName(), gateway.getName());
 		l3manager.updateVirtualInterface(gateway, intf);
 	}
 
@@ -1781,7 +1781,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		}
 
 		if (!instance.isPresent()) {
-			log.info("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), outputPort);
+			log.trace("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), outputPort);
 			return false;
 		}
 
