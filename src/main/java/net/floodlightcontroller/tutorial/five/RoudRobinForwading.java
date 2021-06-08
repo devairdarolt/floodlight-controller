@@ -187,7 +187,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 			if (isOnTheSameSwitch(srcMac, dstMac, sw)) {
 				nodes = new ArrayList<>();
 				for(Entry<IDevice, SwitchPort> entry: knowDevices.entrySet()) {
-					if(entry.getKey().getMACAddress().equals(srcMac)) {						
+					if(entry.getKey().getMACAddress().equals(srcMac)) {	//TODO: Possível alteração para dst					
 						nodes.add(new NodePortTuple(entry.getValue().getNodeId(),entry.getValue().getPortId()));
 					}
 				}
@@ -322,7 +322,7 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
 		Map<DatapathId, IOFSwitch> allSwitchMap = serviceSwitch.getAllSwitchMap();
 		for(Entry<DatapathId, IOFSwitch> entry:allSwitchMap.entrySet()) {
-			log.info("sw {} ports {}",entry.getKey(),entry.getValue().getEnabledPortNumbers());
+			//log.info("sw {} ports {}",entry.getKey(),entry.getValue().getEnabledPortNumbers());
 			for(OFPort port:entry.getValue().getEnabledPortNumbers()) {
 				U.add(new NodePortTuple(entry.getKey(), port));
 			}

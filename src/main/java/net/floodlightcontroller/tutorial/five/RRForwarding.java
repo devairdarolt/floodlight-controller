@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFFactory;
@@ -100,7 +101,8 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	// Imp IDeviceListener
 	protected DeviceListenerImpl deviceListener;
 	protected OFMessageDamper messageDamper;
-	protected Set<IOFSwitch> edgeSwitchSet;
+	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet;
+	
 
 	@Override
 	public String getName() {
@@ -181,7 +183,6 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		List<NodePortTuple> nodes = null;
 
-		
 		if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
 
 			nodes = roundRobin.getNextPath(srcMac, dstMac);
@@ -189,12 +190,13 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		} else {
 			nodes = new ArrayList<>();
 			for (Entry<MacAddress, SwitchPort> entry : deviceListener.knowMacAddress.entrySet()) {
-				if (entry.getKey().compareTo(srcMac) == 0) {
+				if (entry.getKey().equals(dstMac)) {
 					nodes.add(new NodePortTuple(entry.getValue().getNodeId(), entry.getValue().getPortId()));
 				}
+				
 			}
 		}
-		if(nodes == null) {
+		if (nodes == null) {
 			log.trace("Não foi encontrado Path entre src e dst");
 			return Command.CONTINUE;
 		}
@@ -255,7 +257,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				sw2 = entry.getValue().getNodeId();
 			}
 			if (sw1 != null && sw2 != null) {
-				if (sw1.compareTo(sw2) == 0) {
+				if (sw1.equals(sw2)) {
 					return true;
 				}
 			}
@@ -265,14 +267,21 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	}
 
 	private boolean isEdgeSwitch(IOFSwitch sw) {
-		if (this.edgeSwitchSet == null || this.edgeSwitchSet.isEmpty()) {
-			this.edgeSwitchSet = getEdgesSwitches();
-		}
-		for (IOFSwitch swt : this.edgeSwitchSet) {
-			if (swt.getId().equals(sw.getId())) {
-				return true;
+		if(this.edgeSwitchSet != null && !this.edgeSwitchSet.isEmpty()) {
+			for (DatapathId swt : this.edgeSwitchSet) {
+				if (swt.equals(sw.getId())) {
+					return true;
+				}
 			}
-		}
+		}else {
+			this.edgeSwitchSet = getEdgesSwitches(); // Chek if update
+			for (DatapathId swt : this.edgeSwitchSet) {
+				if (swt.equals(sw.getId())) {
+					return true;
+				}
+			}
+		}		
+		
 		return false;
 	}
 
@@ -286,16 +295,16 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	}
 
 	// Edge is switches conected to a host
-	private Set<IOFSwitch> getEdgesSwitches() {
+	private ConcurrentSkipListSet<DatapathId> getEdgesSwitches() {
 		Set<NodePortTuple> list = getBroadcastPorts();
-		Set<IOFSwitch> swSet = new HashSet<>();
+		ConcurrentSkipListSet<DatapathId> swSet = new ConcurrentSkipListSet<>();
 		swSet.addAll(edgeSwitchSet);
 		if (swSet != null && !swSet.isEmpty()) {
 			return swSet;
 		} else {
 			for (NodePortTuple node : list) {
 				IOFSwitch sw = serviceSwitch.getActiveSwitch(node.getNodeId());
-				swSet.add(sw);
+				swSet.add(sw.getId());
 			}
 
 		}
@@ -523,7 +532,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		serviceTopology = context.getServiceImpl(ITopologyService.class);
 
 		roundRobin = new RR();
-		edgeSwitchSet = new HashSet<IOFSwitch>();
+		edgeSwitchSet = new ConcurrentSkipListSet<DatapathId>();
 
 	}
 
@@ -633,12 +642,12 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 	// IDeviceListener
 	class DeviceListenerImpl implements IDeviceListener {
-		protected Map<MacAddress, SwitchPort> knowMacAddress;
-		protected Map<IPv4Address, SwitchPort> knowIpAddress;
+		protected ConcurrentHashMap<MacAddress, SwitchPort> knowMacAddress;
+		protected ConcurrentHashMap<IPv4Address, SwitchPort> knowIpAddress;
 
 		DeviceListenerImpl() {
-			knowMacAddress = new HashMap<MacAddress, SwitchPort>();
-			knowIpAddress = new HashMap<IPv4Address, SwitchPort>();
+			knowMacAddress = new ConcurrentHashMap<MacAddress, SwitchPort>();
+			knowIpAddress = new ConcurrentHashMap<IPv4Address, SwitchPort>();
 		}
 
 		private IDevice findDevice(MacAddress src) {
@@ -662,10 +671,11 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 
 		public SwitchPort findSwitchPort(MacAddress src) {
-
-			for (Entry<MacAddress, SwitchPort> entry : knowMacAddress.entrySet()) {
-				if (entry.getKey().equals(src)) {
-					return entry.getValue();
+			if (knowMacAddress != null) {
+				for (Entry<MacAddress, SwitchPort> entry : knowMacAddress.entrySet()) {
+					if (entry.getKey().equals(src)) {
+						return entry.getValue();
+					}
 				}
 			}
 			return null;
