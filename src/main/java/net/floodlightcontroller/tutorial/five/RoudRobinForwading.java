@@ -273,13 +273,14 @@ public class RoudRobinForwading implements IFloodlightModule, IOFMessageListener
 	private void processARPbroadcastOrMulticast(IOFSwitch sw, OFPacketIn packetIn, OFPort inPort) {
 		Set<NodePortTuple> broadcastPorts = getBroadcastPorts();
 		for (NodePortTuple node : broadcastPorts) {
+			//if para não enviar para o mesmo host que criou o packet-in
 			if (!(node.getNodeId().equals(sw.getId()) && node.getPortId().equals(inPort))) {
 				writePacketOutForPacketIn(serviceSwitch.getSwitch(node.getNodeId()), packetIn, node.getPortId());
 			}
 		}
 	}
 	
-	//Edge is switches conected to a host
+	//Edge is a switches conected to a host
 	private Set<IOFSwitch> getEdgesSwitches() {
 		Set<NodePortTuple> list = getBroadcastPorts();
 		Set<IOFSwitch> swSet = new HashSet<>();
