@@ -3,7 +3,7 @@
  * 
  * Roteamento com 
  */
-package net.floodlightcontroller.tutorial.five;
+package net.floodlightcontroller.forwarding;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -122,10 +122,8 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	@Override
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
-		case PACKET_IN:
-			// TODO processPacketIn
-			OFPacketIn packetIn = OFPacketIn.class.cast(msg);
-			return processPacketIn(sw, packetIn, cntx);
+		case PACKET_IN:			
+			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
 
 		case FLOW_REMOVED:
 			// TODO processFlowRemoved
@@ -299,7 +297,9 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		} else {
 			for (NodePortTuple node : list) {
 				IOFSwitch sw = serviceSwitch.getActiveSwitch(node.getNodeId());
-				swSet.add(sw.getId());
+				if(sw!=null) {
+					swSet.add(sw.getId());
+				}
 			}
 
 		}
