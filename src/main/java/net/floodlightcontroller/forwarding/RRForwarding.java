@@ -122,7 +122,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	@Override
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
-		case PACKET_IN:			
+		case PACKET_IN:
 			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
 
 		case FLOW_REMOVED:
@@ -154,71 +154,128 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 
 		if (eth.getEtherType().equals(EthType.ARP)) {
-			if (eth.isBroadcast() || eth.isMulticast()) {
-				processARPbroadcastOrMulticast(sw, packetIn, inPort, cntx);
+			boolean ARPprocessed = proxyARP(packetIn, cntx);
+			if(!ARPprocessed) {
+				log.error("Controlador não conseguiu processar o arp");
+			}
+			return Command.CONTINUE;
+			
+		}
+		if (eth.getEtherType().equals(EthType.IPv4)) {
+			
+			
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+			Match.Builder mb = sw.getOFFactory().buildMatch();
+			mb.setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST, dstMac);
+			Match match = mb.build();
+
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// GET ROUTE -- RR
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			List<NodePortTuple> nodes = null;
+
+			if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
+
+				nodes = roundRobin.getNextPath(srcMac, dstMac);
+
+			} else {
+				nodes = new ArrayList<>();
+				for (Entry<MacAddress, SwitchPort> entry : deviceListener.knowMacAddress.entrySet()) {
+					if (entry.getKey().equals(dstMac)) {
+						nodes.add(new NodePortTuple(entry.getValue().getNodeId(), entry.getValue().getPortId()));
+					}
+
+				}
+			}
+			if (nodes == null) {
+				log.trace("Não foi encontrado Path entre src e dst");
 				return Command.CONTINUE;
 			}
-			// else process normal src/dst packets
-		}
+			log.trace("Path {}", nodes);
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// ADD FLOW -- para cada node
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			Iterator<NodePortTuple> nodeItr = nodes.iterator();
+			NodePortTuple outNodePort = null;
 
-		Match.Builder mb = sw.getOFFactory().buildMatch();
-		mb.setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST, dstMac);
-		Match match = mb.build();
-
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// GET ROUTE -- RR
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		List<NodePortTuple> nodes = null;
-
-		if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
-
-			nodes = roundRobin.getNextPath(srcMac, dstMac);
-
-		} else {
-			nodes = new ArrayList<>();
-			for (Entry<MacAddress, SwitchPort> entry : deviceListener.knowMacAddress.entrySet()) {
-				if (entry.getKey().equals(dstMac)) {
-					nodes.add(new NodePortTuple(entry.getValue().getNodeId(), entry.getValue().getPortId()));
+			while (nodeItr.hasNext()) {
+				NodePortTuple node = nodeItr.next();// Link in
+				if (node.getNodeId().equals(sw.getId())) {
+					outNodePort = node;// store the first hop to create packet-out
 				}
+				addFlow(sw, match, node);
 
 			}
-		}
-		if (nodes == null) {
-			log.trace("Não foi encontrado Path entre src e dst");
-			return Command.CONTINUE;
-		}
-		log.trace("Path {}", nodes);
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// ADD FLOW -- para cada node
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			log.info("{} >> {} addFlow {}", srcMac, dstMac, nodes);
 
-		Iterator<NodePortTuple> nodeItr = nodes.iterator();
-		NodePortTuple outNodePort = null;
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// PACKET OUT -- in the first hop
+			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-		while (nodeItr.hasNext()) {
-			NodePortTuple node = nodeItr.next();// Link in
-			if (node.getNodeId().equals(sw.getId())) {
-				outNodePort = node;// store the first hop to create packet-out
+			if (outNodePort != null) {
+				log.trace("PacketOut {}{}", sw, outNodePort.getPortId());
+				writePacketOutForPacketIn(sw, packetIn, outNodePort.getPortId());
 			}
-			addFlow(sw, match, node);
-
 		}
-		log.info("{} >> {} addFlow {}", srcMac, dstMac, nodes);
-
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		// PACKET OUT -- in the first hop
-		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-		if (outNodePort != null) {
-			log.trace("PacketOut {}{}", sw, outNodePort.getPortId());
-			writePacketOutForPacketIn(sw, packetIn, outNodePort.getPortId());
-		}
-
 		return Command.CONTINUE;
+	}
+
+	/**
+	 * Send packet arps direct to the switch port of the host
+	 * @param packetIn
+	 * @param cntx
+	 */
+	private boolean proxyARP(OFPacketIn packetIn, FloodlightContext cntx) {
+		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+		MacAddress srcMac = eth.getSourceMACAddress();
+		MacAddress dstMac = eth.getDestinationMACAddress();
+		
+		
+		SwitchPort swPortMac = deviceListener.findSwitchPort(dstMac);
+		
+		ARP arp = ARP.class.cast(eth.getPayload());
+		
+		SwitchPort swPortIp = deviceListener.findSwitchPort(arp.getTargetProtocolAddress());
+		
+		if(swPortIp!=null) {
+			IOFSwitch sw = serviceSwitch.getSwitch(swPortIp.getNodeId());
+			if(sw==null)return false;
+			OFPort egresPort = swPortIp.getPortId();
+			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			log.info("send ARP targeted IP {} to {}",arp.getTargetProtocolAddress(),swPortIp);
+			return true;
+		}
+		
+		if(swPortMac!=null) {
+			IOFSwitch sw = serviceSwitch.getSwitch(swPortMac.getNodeId());
+			if(sw==null)return false;
+			OFPort egresPort = swPortMac.getPortId();
+			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			log.info("send ARP targeted mac {} to {}",arp.getTargetHardwareAddress(),swPortMac);
+			return true;
+		}
+		
+		//if controler don't now target switch
+		Set<NodePortTuple> targets = getBroadcastPorts();
+		if (targets==null || targets.isEmpty()) {
+			return false;
+		}
+		for(NodePortTuple target:targets) {
+			IOFSwitch sw = serviceSwitch.getSwitch(target.getNodeId());
+			if(sw==null)return false;
+			OFPort egresPort = target.getPortId();
+			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			log.info("send broadcast to {}",target);			
+		}
+		
+		//if not process arp
+		return false;
+		
+		
 	}
 
 	private boolean isOnTheSameSwitch(MacAddress srcMac, MacAddress dstMac, IOFSwitch sw) {
@@ -273,18 +330,18 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 		Set<NodePortTuple> broadcastPorts = new HashSet<NodePortTuple>();
 		SwitchPort switchPort = deviceListener.findSwitchPort(arpRequest.getTargetHardwareAddress());
-		if(switchPort!=null) {			
-			broadcastPorts.add(new NodePortTuple(switchPort.getNodeId(),switchPort.getPortId()));
+		if (switchPort != null) {
+			broadcastPorts.add(new NodePortTuple(switchPort.getNodeId(), switchPort.getPortId()));
 		}
-		if(broadcastPorts.isEmpty()) {
-			broadcastPorts.addAll(getBroadcastPorts());			
+		if (broadcastPorts.isEmpty()) {
+			broadcastPorts.addAll(getBroadcastPorts());
 		}
 		for (NodePortTuple node : broadcastPorts) {
 			if (!(node.getNodeId().equals(sw.getId()) && node.getPortId().equals(inPort))) {
 				writePacketOutForPacketIn(serviceSwitch.getSwitch(node.getNodeId()), packetIn, node.getPortId());
 			}
 		}
-		
+
 	}
 
 	// Edge is switches conected to a host
@@ -297,7 +354,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		} else {
 			for (NodePortTuple node : list) {
 				IOFSwitch sw = serviceSwitch.getActiveSwitch(node.getNodeId());
-				if(sw!=null) {
+				if (sw != null) {
 					swSet.add(sw.getId());
 				}
 			}
@@ -333,7 +390,8 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
 		Map<DatapathId, IOFSwitch> allSwitchMap = serviceSwitch.getAllSwitchMap();
 		for (Entry<DatapathId, IOFSwitch> entry : allSwitchMap.entrySet()) {
-			//log.info("sw {} ports {}", entry.getKey(), entry.getValue().getEnabledPortNumbers());
+			// log.info("sw {} ports {}", entry.getKey(),
+			// entry.getValue().getEnabledPortNumbers());
 			for (OFPort port : entry.getValue().getEnabledPortNumbers()) {
 				U.add(new NodePortTuple(entry.getKey(), port));
 			}
@@ -345,7 +403,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				A.add(node);
 			}
 		}
-		log.trace("broadcast ports {}", A);
+		log.info("broadcast ports {}", A);
 		return A;
 
 	}
@@ -417,19 +475,19 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		MacAddress dstMac = eth.getDestinationMACAddress();
 
 		ARP arpRequest = (ARP) eth.getPayload();
-		
-		IDevice replyDevice = this.deviceListener.findDevice(arpRequest.getTargetProtocolAddress());		
-		if(replyDevice==null) {//Controlador não encontrou o device
+
+		IDevice replyDevice = this.deviceListener.findDevice(arpRequest.getTargetProtocolAddress());
+		if (replyDevice == null) {// Controlador não encontrou o device
 			return false;
 		}
-		
+
 		MacAddress replySenderMac = replyDevice.getMACAddress();
 		IPv4Address replySenderIPv4 = arpRequest.getTargetProtocolAddress();
 
 		if (replySenderIPv4 == null || replySenderMac == null) {
 			return false;
 		}
-		//Proxy arp to target switch
+		// Proxy arp to target switch
 		SwitchPort nodePort = this.deviceListener.knowMacAddress.get(replySenderMac);
 		IOFSwitch swt = this.serviceSwitch.getSwitch(nodePort.getNodeId());
 		OFPort egressPort = nodePort.getPortId();
@@ -642,7 +700,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			knowMacAddress = new ConcurrentHashMap<MacAddress, SwitchPort>();
 			knowIpAddress = new ConcurrentHashMap<IPv4Address, SwitchPort>();
 		}
-				
+
 		private IDevice findDevice(MacAddress src) {
 			for (IDevice device : serviceDeviceManager.getAllDevices()) {
 				if (device.getMACAddress().equals(src)) {
