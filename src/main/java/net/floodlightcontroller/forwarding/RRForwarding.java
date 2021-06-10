@@ -35,6 +35,7 @@ import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.IPv6Address;
+import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
@@ -66,6 +67,9 @@ import net.floodlightcontroller.linkdiscovery.internal.LinkInfo;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPacket;
+import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.TCP;
+import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingService;
@@ -162,14 +166,27 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			
 		}
 		if (eth.getEtherType().equals(EthType.IPv4)) {
-			
-			
+			IPv4 ipv4Packet = IPv4.class.cast(eth.getPayload());
+			if (ipv4Packet.getProtocol().equals(IpProtocol.TCP)) {
+				
+				TCP protocol = TCP.class.cast(ipv4Packet.getPayload());
+				protocol.getDestinationPort();
+				protocol.getSourcePort();
+				
+			} else if (ipv4Packet.getProtocol().equals(IpProtocol.UDP)) {
+				UDP protocol = UDP.class.cast(ipv4Packet.getPayload());
+				protocol.getDestinationPort();
+				protocol.getSourcePort();
+			}
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 			Match.Builder mb = sw.getOFFactory().buildMatch();
-			mb.setExact(MatchField.ETH_SRC, srcMac).setExact(MatchField.ETH_DST, dstMac);
+			mb.setExact(MatchField.IPV4_SRC, ipv4Packet.getSourceAddress());
+			mb.setExact(MatchField.IPV4_DST, ipv4Packet.getDestinationAddress());
+			mb.setExact(MatchField.ETH_TYPE, EthType.IPv4);
+			
 			Match match = mb.build();
 
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -179,7 +196,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 			if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
 
-				nodes = roundRobin.getNextPath(srcMac, dstMac);
+				nodes = roundRobin.getNextPath(srcMac, dstMac,ipv4Packet.getSourceAddress(),ipv4Packet.getDestinationAddress());
 
 			} else {
 				nodes = new ArrayList<>();
@@ -599,13 +616,18 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	protected class RR {
 		// Key aux in RR map
 		public class Key {
-			public MacAddress src;
-			public MacAddress dst;
+			private MacAddress srcMAC;
+			private MacAddress dstMAC;
+			private IPv4Address srcIp;
+			private IPv4Address dstIp;
+			
 
-			public Key(MacAddress src2, MacAddress dst2) {
+			public Key(MacAddress src2, MacAddress dst2,IPv4Address srcIpv4, IPv4Address dstIpv4) {
 				super();
-				this.src = src2;
-				this.dst = dst2;
+				this.srcMAC = src2;
+				this.dstMAC = dst2;
+				this.srcIp = srcIpv4;
+				this.dstIp = dstIpv4;
 			}
 		}
 
@@ -622,13 +644,15 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		 * 
 		 * @param src
 		 * @param dst
+		 * @param dstIpv4 
+		 * @param srcIpv4 
 		 * @return
 		 */
-		public List<NodePortTuple> getNextPath(MacAddress src, MacAddress dst) {
+		public List<NodePortTuple> getNextPath(MacAddress src, MacAddress dst, IPv4Address srcIpv4, IPv4Address dstIpv4) {
 			ConcurrentLinkedDeque<Path> paths = null;
 			// Find in rrlist
 			for (Entry<Key, ConcurrentLinkedDeque<Path>> entry : knowPaths.entrySet()) {
-				if (src.equals(entry.getKey().src) && dst.equals(entry.getKey().dst)) {
+				if (src.equals(entry.getKey().srcMAC) && dst.equals(entry.getKey().dstMAC)) {
 					paths = entry.getValue();
 				}
 			}
@@ -650,7 +674,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				log.trace("pathList: {}", pathList);
 				paths = new ConcurrentLinkedDeque<Path>();
 				paths.addAll(pathList);
-				Key key = new Key(src, dst);
+				Key key = new Key(src, dst, srcIpv4,dstIpv4);
 				knowPaths.put(key, paths);
 			}
 
