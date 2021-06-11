@@ -84,6 +84,7 @@ import net.floodlightcontroller.virtualnetwork.VirtualNetworkFilter;
 
 @SuppressWarnings("unused")
 public class RRForwarding implements IFloodlightModule, IOFMessageListener {
+	//statics
 	public static final long COOKIE = 333;
 	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
 	private static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
@@ -92,7 +93,6 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	protected static final Logger log = LoggerFactory.getLogger(RRForwarding.class);
 
 	// Dependencies
-
 	private IRoutingService serviceRoutingEngine;
 	private IDeviceService serviceDeviceManager;
 	private ITopologyService serviceTopology;
@@ -101,15 +101,14 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	IFloodlightProviderService serviceFloodlightProvider;
 
 	// Internal stats
-	private RR roundRobin;
-	// Imp IDeviceListener
-	protected DeviceListenerImpl deviceListener;
-	protected OFMessageDamper messageDamper;
-	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet;
+	private RR roundRobin;//Selector path
+	
+	protected DeviceListenerImpl deviceListener;	
+	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet; //Todos os switches que contém portas com liks para hosts
 
 	@Override
 	public String getName() {
-
+		
 		return RRForwarding.class.getName();
 	}
 
@@ -122,7 +121,10 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
 		return false;
 	}
-
+	
+	/**
+	 * Default message worker
+	 */
 	@Override
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
@@ -130,19 +132,25 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
 
 		case FLOW_REMOVED:
-			// TODO processFlowRemoved
+			// TODO Modificar caso seja necessário que o controlador seja avisado quando um fluxo expirar
 			break;
-		case ERROR:
-			// TODO processError
+		case ERROR:			
+			log.info("Ocorreu um erro no switch {}",sw.getSwitchDescription().getDatapathDescription());
 			break;
 		default:
-			// TODO showMsg
+			log.info("O controlador recebeu uma mensagem inesperada");
 			break;
 
 		}
-		return null;
+		return Command.STOP;
 	}
-
+	/**
+	 * Função responsável por fazer inserir as regras em switches para tratar o encaminhamento de fluxo
+	 * @param sw
+	 * @param packetIn
+	 * @param cntx
+	 * @return
+	 */
 	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
 
 		// log.trace("Know Devices {}", knowDevices.keySet());
@@ -159,34 +167,37 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 		if (eth.getEtherType().equals(EthType.ARP)) {
 			boolean ARPprocessed = proxyARP(packetIn, cntx);
-			if(!ARPprocessed) {
+			if (!ARPprocessed) {
 				log.error("Controlador não conseguiu processar o arp");
 			}
 			return Command.CONTINUE;
-			
+
 		}
 		if (eth.getEtherType().equals(EthType.IPv4)) {
+
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			// MATCH
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			IPv4 ipv4Packet = IPv4.class.cast(eth.getPayload());
-			if (ipv4Packet.getProtocol().equals(IpProtocol.TCP)) {
-				
-				TCP protocol = TCP.class.cast(ipv4Packet.getPayload());
-				protocol.getDestinationPort();
-				protocol.getSourcePort();
-				
-			} else if (ipv4Packet.getProtocol().equals(IpProtocol.UDP)) {
-				UDP protocol = UDP.class.cast(ipv4Packet.getPayload());
-				protocol.getDestinationPort();
-				protocol.getSourcePort();
-			}
-			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-			// MATCH -- Utiliza apenas MAC_SRC e MAC_DST
-			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 			Match.Builder mb = sw.getOFFactory().buildMatch();
 			mb.setExact(MatchField.IPV4_SRC, ipv4Packet.getSourceAddress());
 			mb.setExact(MatchField.IPV4_DST, ipv4Packet.getDestinationAddress());
 			mb.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-			
+			if (ipv4Packet.getProtocol().equals(IpProtocol.TCP)) {
+				mb.setExact(MatchField.IP_PROTO,IpProtocol.TCP);
+				TCP protocol = TCP.class.cast(ipv4Packet.getPayload());
+				mb.setExact(MatchField.TCP_SRC,protocol.getSourcePort());
+				mb.setExact(MatchField.TCP_DST, protocol.getDestinationPort());
+				
+
+			} else if (ipv4Packet.getProtocol().equals(IpProtocol.UDP)) {
+				mb.setExact(MatchField.IP_PROTO,IpProtocol.UDP);
+				UDP protocol = UDP.class.cast(ipv4Packet.getPayload());
+				mb.setExact(MatchField.TCP_SRC,protocol.getSourcePort());
+				mb.setExact(MatchField.TCP_DST, protocol.getDestinationPort());
+				
+			}
 			Match match = mb.build();
 
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -196,7 +207,8 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 			if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
 
-				nodes = roundRobin.getNextPath(srcMac, dstMac,ipv4Packet.getSourceAddress(),ipv4Packet.getDestinationAddress());
+				nodes = roundRobin.getNextPath(srcMac, dstMac, ipv4Packet.getSourceAddress(),
+						ipv4Packet.getDestinationAddress());
 
 			} else {
 				nodes = new ArrayList<>();
@@ -218,16 +230,18 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 			Iterator<NodePortTuple> nodeItr = nodes.iterator();
 			NodePortTuple outNodePort = null;
-
+			
+			List<String> switches = new ArrayList<>();
 			while (nodeItr.hasNext()) {
 				NodePortTuple node = nodeItr.next();// Link in
 				if (node.getNodeId().equals(sw.getId())) {
 					outNodePort = node;// store the first hop to create packet-out
 				}
+				switches.add(serviceSwitch.getSwitch(node.getNodeId()).getSwitchDescription().getDatapathDescription());
 				addFlow(sw, match, node);
 
 			}
-			log.info("{} >> {} addFlow {}", srcMac, dstMac, nodes);
+			log.info("{} >> {} addFlow {}", srcMac, dstMac, switches);
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// PACKET OUT -- in the first hop
@@ -243,6 +257,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 	/**
 	 * Send packet arps direct to the switch port of the host
+	 * 
 	 * @param packetIn
 	 * @param cntx
 	 */
@@ -250,49 +265,48 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		MacAddress srcMac = eth.getSourceMACAddress();
 		MacAddress dstMac = eth.getDestinationMACAddress();
-		
-		
+
 		SwitchPort swPortMac = deviceListener.findSwitchPort(dstMac);
-		
+
 		ARP arp = ARP.class.cast(eth.getPayload());
-		
+
 		SwitchPort swPortIp = deviceListener.findSwitchPort(arp.getTargetProtocolAddress());
-		
-		if(swPortIp!=null) {
+
+		if (swPortIp != null) {
 			IOFSwitch sw = serviceSwitch.getSwitch(swPortIp.getNodeId());
-			if(sw==null)return false;
+			if (sw == null)
+				return false;
 			OFPort egresPort = swPortIp.getPortId();
 			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted IP {} to {}",arp.getTargetProtocolAddress(),swPortIp);
+			log.info("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
 			return true;
 		}
-		
-		if(swPortMac!=null) {
+
+		if (swPortMac != null) {
 			IOFSwitch sw = serviceSwitch.getSwitch(swPortMac.getNodeId());
-			if(sw==null)return false;
+			if (sw == null)
+				return false;
 			OFPort egresPort = swPortMac.getPortId();
 			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted mac {} to {}",arp.getTargetHardwareAddress(),swPortMac);
+			log.info("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
 			return true;
 		}
-		
-		//if controler don't now target switch
+
+		// if controler don't now target switch
 		Set<NodePortTuple> targets = getBroadcastPorts();
-		if (targets==null || targets.isEmpty()) {
+		if (targets == null || targets.isEmpty()) {
 			return false;
 		}
-		for(NodePortTuple target:targets) {
+		for (NodePortTuple target : targets) {
 			IOFSwitch sw = serviceSwitch.getSwitch(target.getNodeId());
-			if(sw==null)return false;
+			if (sw == null)
+				return false;
 			OFPort egresPort = target.getPortId();
 			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send broadcast to {}",target);			
+			log.info("send broadcast to {}", target);
 		}
-		
-		//if not process arp
 		return false;
-		
-		
+
 	}
 
 	private boolean isOnTheSameSwitch(MacAddress srcMac, MacAddress dstMac, IOFSwitch sw) {
@@ -470,9 +484,9 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		flowBuilder.setPriority(FLOWMOD_PRIORITY);
 		flowBuilder.setOutPort(node.getPortId());
 		Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-		flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
+		//flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
 												// idl-timeout ocorrer
-		flowBuilder.setFlags(flags);
+		//flowBuilder.setFlags(flags);
 
 		// ACTIONS
 		List<OFAction> actions = new ArrayList<OFAction>();
@@ -485,53 +499,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		// logger.info("Flow ADD node{} port {}", swit, node.getPortId());
 	}
 
-	private boolean replyARP(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
-		log.trace("replyARP");
-		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-		MacAddress srcMac = eth.getSourceMACAddress();
-		MacAddress dstMac = eth.getDestinationMACAddress();
-
-		ARP arpRequest = (ARP) eth.getPayload();
-
-		IDevice replyDevice = this.deviceListener.findDevice(arpRequest.getTargetProtocolAddress());
-		if (replyDevice == null) {// Controlador não encontrou o device
-			return false;
-		}
-
-		MacAddress replySenderMac = replyDevice.getMACAddress();
-		IPv4Address replySenderIPv4 = arpRequest.getTargetProtocolAddress();
-
-		if (replySenderIPv4 == null || replySenderMac == null) {
-			return false;
-		}
-		// Proxy arp to target switch
-		SwitchPort nodePort = this.deviceListener.knowMacAddress.get(replySenderMac);
-		IOFSwitch swt = this.serviceSwitch.getSwitch(nodePort.getNodeId());
-		OFPort egressPort = nodePort.getPortId();
-		writePacketOutForPacketIn(sw, packetIn, egressPort);
-		return true;
-		/*
-		 * // se encontrar as informações constroi o pacote (10.0.0.2 at 00:00:00:02)
-		 * 
-		 * // generate proxy ARP reply IPacket arpReply = new
-		 * Ethernet().setSourceMACAddress(replySenderMac)
-		 * .setDestinationMACAddress(eth.getSourceMACAddress()).setEtherType(EthType.
-		 * ARP) .setVlanID(eth.getVlanID()).setPriorityCode(eth.getPriorityCode())
-		 * .setPayload(new
-		 * ARP().setHardwareType(ARP.HW_TYPE_ETHERNET).setProtocolType(ARP.
-		 * PROTO_TYPE_IP) .setHardwareAddressLength((byte)
-		 * 6).setProtocolAddressLength((byte) 4).setOpCode(ARP.OP_REPLY)
-		 * .setSenderHardwareAddress(replySenderMac).setSenderProtocolAddress(
-		 * replySenderIPv4) .setTargetHardwareAddress(eth.getSourceMACAddress())
-		 * .setTargetProtocolAddress(arpRequest.getSenderProtocolAddress()));
-		 * 
-		 * // push ARP reply out pushPacket(arpReply, sw, OFBufferId.NO_BUFFER,
-		 * OFPort.ANY, (packetIn.getVersion().compareTo(OFVersion.OF_12) < 0 ?
-		 * packetIn.getInPort() : packetIn.getMatch().get(MatchField.IN_PORT)), cntx,
-		 * true); return true;
-		 */
-	}
-
+	
 	public void pushPacket(IPacket packet, IOFSwitch sw, OFBufferId bufferId, OFPort inPort, OFPort outPort,
 			FloodlightContext cntx, boolean flush) {
 
@@ -618,16 +586,11 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		public class Key {
 			private MacAddress srcMAC;
 			private MacAddress dstMAC;
-			private IPv4Address srcIp;
-			private IPv4Address dstIp;
-			
 
-			public Key(MacAddress src2, MacAddress dst2,IPv4Address srcIpv4, IPv4Address dstIpv4) {
+			public Key(MacAddress src2, MacAddress dst2) {
 				super();
 				this.srcMAC = src2;
 				this.dstMAC = dst2;
-				this.srcIp = srcIpv4;
-				this.dstIp = dstIpv4;
 			}
 		}
 
@@ -644,11 +607,12 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		 * 
 		 * @param src
 		 * @param dst
-		 * @param dstIpv4 
-		 * @param srcIpv4 
+		 * @param dstIpv4
+		 * @param srcIpv4
 		 * @return
 		 */
-		public List<NodePortTuple> getNextPath(MacAddress src, MacAddress dst, IPv4Address srcIpv4, IPv4Address dstIpv4) {
+		public List<NodePortTuple> getNextPath(MacAddress src, MacAddress dst, IPv4Address srcIpv4,
+				IPv4Address dstIpv4) {
 			ConcurrentLinkedDeque<Path> paths = null;
 			// Find in rrlist
 			for (Entry<Key, ConcurrentLinkedDeque<Path>> entry : knowPaths.entrySet()) {
@@ -674,7 +638,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				log.trace("pathList: {}", pathList);
 				paths = new ConcurrentLinkedDeque<Path>();
 				paths.addAll(pathList);
-				Key key = new Key(src, dst, srcIpv4,dstIpv4);
+				Key key = new Key(src, dst);
 				knowPaths.put(key, paths);
 			}
 
@@ -801,14 +765,12 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 		@Override
 		public void deviceIPV4AddrChanged(IDevice device) {
-
+			//ignore
 		}
 
 		@Override
 		public void deviceIPV6AddrChanged(IDevice device) {
-			// TODO
-			// logger.debug("IPv6 address change not handled in VirtualNetworkFilter.
-			// Device: {}", device.toString());
+			//ignore
 		}
 
 		@Override
@@ -839,3 +801,8 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	}
 
 }
+// TODO:{1}. Verificar a necessidade de implementar switch listener para remover dos caches de caminhos caso um switch seja removido
+
+// TODO:{2}. Verificar a necessidade de tratar fluxos que expiraram
+
+// TODO:{3}. 
