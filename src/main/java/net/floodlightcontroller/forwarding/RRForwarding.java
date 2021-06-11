@@ -277,7 +277,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			if (sw == null)
 				return false;
 			OFPort egresPort = swPortIp.getPortId();
-			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			writePacketOutForPacketIn(sw, packetIn, egresPort);
 			log.info("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
 			return true;
 		}
@@ -287,7 +287,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			if (sw == null)
 				return false;
 			OFPort egresPort = swPortMac.getPortId();
-			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			writePacketOutForPacketIn(sw, packetIn, egresPort);
 			log.info("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
 			return true;
 		}
@@ -302,7 +302,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			if (sw == null)
 				return false;
 			OFPort egresPort = target.getPortId();
-			this.writePacketOutForPacketIn(sw, packetIn, egresPort);
+			writePacketOutForPacketIn(sw, packetIn, egresPort);
 			log.info("send broadcast to {}", target);
 		}
 		return false;
@@ -478,7 +478,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		flowBuilder = sw.getOFFactory().buildFlowAdd();
 		flowBuilder.setMatch(match);
 		flowBuilder.setCookie(U64.of(COOKIE));
-		flowBuilder.setIdleTimeout(this.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+		flowBuilder.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		flowBuilder.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		flowBuilder.setBufferId(OFBufferId.NO_BUFFER);
 		flowBuilder.setPriority(FLOWMOD_PRIORITY);
