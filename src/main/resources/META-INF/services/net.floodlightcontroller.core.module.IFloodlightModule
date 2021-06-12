@@ -37,3 +37,4 @@ net.floodlightcontroller.tutorial.five.Forward4
 net.floodlightcontroller.tutorial.five.Forward5
 net.floodlightcontroller.tutorial.five.Forward6
 net.floodlightcontroller.forwarding.RRForwarding
+net.floodlightcontroller.forwarding.BWForwarding
