@@ -166,10 +166,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 
 		if (eth.getEtherType().equals(EthType.ARP)) {
-			boolean ARPprocessed = proxyARP(packetIn, cntx);
-			if (!ARPprocessed) {
-				log.error("Controlador não conseguiu processar o arp");
-			}
+			boolean ARPprocessed = proxyARP(packetIn, cntx);			
 			return Command.CONTINUE;
 
 		}
