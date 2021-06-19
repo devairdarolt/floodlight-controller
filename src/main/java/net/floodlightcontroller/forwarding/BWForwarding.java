@@ -307,8 +307,12 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 			return null;
 		}
 
-		List<Path> paths = serviceRoutingEngine.getPathsSlow(srcSwitchPort.getNodeId(), dstSwitchPort.getNodeId(),
-				serviceRoutingEngine.getMaxPathsToCompute());
+		/*
+		 * List<Path> paths =
+		 * serviceRoutingEngine.getPathsSlow(srcSwitchPort.getNodeId(),
+		 * dstSwitchPort.getNodeId(), serviceRoutingEngine.getMaxPathsToCompute());
+		 */
+		List<Path> paths = serviceRoutingEngine.getPathsFast(srcSwitchPort.getNodeId(), dstSwitchPort.getNodeId());
 		if (paths == null || paths.isEmpty()) {
 			log.info("Não foi encontrado caminho entre os switches");
 			return null;
@@ -747,7 +751,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		serviceStatistics = context.getServiceImpl(IStatisticsService.class);
 		serviceThread = context.getServiceImpl(IThreadPoolService.class);
 
-		long flowStatsInterval = 15;
+		long flowStatsInterval = 20;
 		bandwitdthMonitor = new BandwitdthMonitor();
 		serviceThread.getScheduledExecutor().scheduleAtFixedRate(bandwitdthMonitor, flowStatsInterval,
 				flowStatsInterval, TimeUnit.SECONDS);
@@ -774,11 +778,12 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		public void run() {
 
 			log.info("run Bandwitdth colector");
-
-			statsColector();
-			// checkBandwitdthAllPorts();
-
-			// defaultBandwidth();
+			try {
+				statsColector();
+				
+			}catch (Exception e) {
+				log.error("Erro ao coletar estatísticas {}",e.getMessage());
+			}
 			// flowStats();
 		}
 
@@ -798,12 +803,8 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 					if (!portDesc.getPortNo().equals(OFPort.LOCAL)) {
 
 						portDesc.getCurrSpeed();
-						SwitchPortBandwidth bandwitdth = statsCollector.getBandwidthConsumption(entry.getKey(),
-								portDesc.getPortNo());
-
-						if (bandwitdth == null) {
-							bandwitdth = getBidirectionalBandwitdth(entry.getKey(), portDesc.getPortNo());
-						}
+						SwitchPortBandwidth bandwitdth = getBidirectionalBandwitdth(entry.getKey(), portDesc.getPortNo());
+						
 						if (bandwitdth != null) {
 							log.info("OK ---sw {}-{} speed {} Kbps",
 									new Object[] { entry.getKey(), portDesc.getPortNo(),
@@ -820,62 +821,40 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 
 		private SwitchPortBandwidth getBidirectionalBandwitdth(DatapathId key, OFPort portNo) {
+			SwitchPortBandwidth bandwitdth =null;
 			if (!portNo.equals(OFPort.LOCAL)) {
 				Set<Link> links = serviceLinkDiscovery.getSwitchLinks().get(key);
+				NodePortTuple target = null;
+				//encontra a outra ponta deste link
 				for (Link link : links) {
-					// log.info("link {}",link);
+					//link com origem key/port
 					if (link.getSrc().equals(key) && link.getSrcPort().equals(portNo)) {
-						SwitchPortBandwidth bandwitdth = statsCollector.getBandwidthConsumption(link.getDst(),
-								link.getDstPort());
-						if (bandwitdth == null) {
-							log.info("ERRO --- Bidirectional link bw fail");
-						} else {
-							return bandwitdth;
-						}
+						target = new NodePortTuple(link.getDst(), link.getDstPort());
+						break;
 					}
+					//link com destino key/port
+					if(link.getDst().equals(key) && link.getDstPort().equals(portNo)) {
+						target = new NodePortTuple(link.getSrc(), link.getSrcPort());
+						break;
+					}
+				}				
+				//tenta pegar a largura de banda pelo sw key
+				bandwitdth = statsCollector.getBandwidthConsumption(key, portNo);
+				if(bandwitdth!=null) {
+					return bandwitdth;
 				}
-
+				if(target==null) {
+					return null;
+				}
+				//caso não seja possível, então pega a largura de banda da outra ponta do link
+				bandwitdth = statsCollector.getBandwidthConsumption(target.getNodeId(), target.getPortId());
+				if(bandwitdth!=null) {
+					return bandwitdth;
+				}
+				
 			}
+			log.info("getBidirectionalBandwitdth fail");
 			return null;
-		}
-
-		private void checkBandwitdthAllPorts() {
-			for (Entry<DatapathId, IOFSwitch> entry : serviceSwitch.getAllSwitchMap().entrySet()) {
-				for (OFPortDesc portDesc : entry.getValue().getPorts()) {
-					portDesc.getCurrSpeed();
-					SwitchPortBandwidth bandwitdth = serviceStatistics.getBandwidthConsumption(entry.getKey(),
-							portDesc.getPortNo());
-					if (bandwitdth != null && bandwitdth.getBitsPerSecondRx().getValue() > 0) {
-						log.info("OK ---sw {}-{} speed {} Kbps",
-								new Object[] { entry.getKey(), portDesc.getPortNo(),
-										(bandwitdth.getBitsPerSecondRx().getValue()
-												+ bandwitdth.getBitsPerSecondRx().getValue()) / 1000 });
-
-					} else {
-						log.info("ERRO --- sw {}-{}", new Object[] { entry.getKey(), portDesc.getPortNo() });
-					}
-					// log.info("sw {}-{} max_speed {} c_speed {}",new Object[]
-					// {entry.getKey(),portDesc.getPortNo(),portDesc.getMaxSpeed(),portDesc.getCurrSpeed()});
-				}
-				//
-			}
-		}
-
-		private void defaultBandwidth() {
-			for (Entry<DatapathId, IOFSwitch> entry : serviceSwitch.getAllSwitchMap().entrySet()) {
-				for (OFPortDesc port : entry.getValue().getPorts()) {
-					SwitchPortBandwidth bdwt = serviceStatistics.getBandwidthConsumption(entry.getKey(),
-							port.getPortNo());
-
-					if (bdwt != null) {
-
-						log.info("sw: {}:{} c_speed: {} max_speed: {} bw: {}",
-								new Object[] { entry.getKey(), port.getPortNo(), port.getCurrSpeed(),
-										port.getMaxSpeed(), bdwt.getLinkSpeedBitsPerSec().getValue() });
-
-					}
-				}
-			}
 		}
 
 		private void flowStats() {
