@@ -75,6 +75,7 @@ import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.routing.IRoutingService.PATH_METRIC;
 import net.floodlightcontroller.routing.Path;
 import net.floodlightcontroller.statistics.FlowRuleStats;
 import net.floodlightcontroller.statistics.IStatisticsService;
@@ -138,12 +139,17 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 	public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		switch (msg.getType()) {
 		case PACKET_IN:
-			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
+			try {
+				return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
+			}catch (Exception e) {
+				log.trace("Erro ao processar packet-in {}",e.getMessage());
+				
+			}
 		case ERROR:
-			log.info("Ocorreu um erro no switch {}", sw.getSwitchDescription().getDatapathDescription());
+			log.trace("Ocorreu um erro no switch {}", sw.getSwitchDescription().getDatapathDescription());
 			break;
 		default:
-			log.info("O controlador recebeu uma mensagem inesperada");
+			log.trace("O controlador recebeu uma mensagem inesperada");
 			break;
 
 		}
@@ -159,7 +165,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 	 * @param cntx
 	 * @return
 	 */
-	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) {
+	private Command processPacketIn(IOFSwitch sw, OFPacketIn packetIn, FloodlightContext cntx) throws Exception {
 
 		// log.trace("Know Devices {}", knowDevices.keySet());
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
@@ -202,7 +208,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				mb.setExact(MatchField.TCP_DST, protocol.getDestinationPort());
 
 			}
-			log.info("packet-in >> src {} {}", ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());
+			log.trace("packet-in >> src {} {}", ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());
 			Match match = mb.build();
 
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -212,11 +218,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 
 			if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
 				// nodes = getBandwidthPath(srcMac, dstMac);
-				nodes = getLessBandwidthPath(ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());
-				/*
-				 * TODO: getPath() nodes = roundRobin.getNextPath(srcMac, dstMac,
-				 * ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());
-				 */
+				nodes = getLessBandwidthPath(ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());				
 
 			} else {
 				nodes = new ArrayList<>();
@@ -246,7 +248,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				addFlow(sw, match, node);
 
 			}
-			log.info("{} >> {} addFlow {} ", srcMac, dstMac, switches);
+			log.trace("{} >> {} addFlow {} ", srcMac, dstMac, switches);
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// PACKET OUT -- in the first hop
@@ -272,106 +274,113 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 	}
 
 	public List<NodePortTuple> getLessBandwidthPath(IPv4Address srcIpv4, IPv4Address dstIpv4) {
-		IDevice srcDevice = null;
-		IDevice dstDevice = null;
-		// find devices
-		for (IDevice device : serviceDeviceManager.getAllDevices()) {
-			for (IPv4Address ip : device.getIPv4Addresses()) {
-				if (ip.equals(srcIpv4)) {
-					srcDevice = device;
+		
+		try {
+			IDevice srcDevice = null;
+			IDevice dstDevice = null;
+			// find devices
+			for (IDevice device : serviceDeviceManager.getAllDevices()) {
+				for (IPv4Address ip : device.getIPv4Addresses()) {
+					if (ip.equals(srcIpv4)) {
+						srcDevice = device;
+					}
+					if (ip.equals(dstIpv4)) {
+						dstDevice = device;
+					}
 				}
-				if (ip.equals(dstIpv4)) {
-					dstDevice = device;
-				}
+
+			}
+			if (srcDevice == null || dstDevice == null) {
+				log.trace("Não foi encontrado o device para os endereços informados");
+				return null;
+			}
+			SwitchPort srcSwitchPort = null;
+			SwitchPort dstSwitchPort = null;
+			// find src switch
+			for (SwitchPort att : srcDevice.getAttachmentPoints()) {
+				srcSwitchPort = att;
+				break;
+			}
+			// find dst switch
+			for (SwitchPort att : dstDevice.getAttachmentPoints()) {
+				dstSwitchPort = att;
+				break;
+			}
+			if (srcSwitchPort == null && dstSwitchPort == null) {
+				log.trace("Não foi encontrado switch para os devices");
+				return null;
 			}
 
-		}
-		if (srcDevice == null || dstDevice == null) {
-			log.info("Não foi encontrado o device para os endereços informados");
+			/*
+			 * List<Path> paths =
+			 * serviceRoutingEngine.getPathsSlow(srcSwitchPort.getNodeId(),
+			 * dstSwitchPort.getNodeId(), serviceRoutingEngine.getMaxPathsToCompute());
+			 */
+					
+			List<Path> paths = serviceRoutingEngine.getPathsFast(srcSwitchPort.getNodeId(), dstSwitchPort.getNodeId());
+			if (paths == null || paths.isEmpty()) {
+				log.trace("Não foi encontrado caminho entre os switches");
+				return null;
+			}
+
+			// calcula bandwitdth de todos os caminhos possíveis
+			Map<KeyMap, List<NodePortTuple>> calcPaths = new HashMap<>(); // calcPaths = [{{hash1,10Mb},[sw1,sw2,sw3]},
+																			// {hash2,200Mb},[sw1,sw3]}]
+
+			for (Path path : paths) {
+				// remove as portas de entrada deixando apenas as portas de saida
+				List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
+				listNodes.addAll(path.getPath());
+
+				ArrayDeque<DatapathId> aux = new ArrayDeque<>();
+				ArrayDeque<NodePortTuple> aux1 = new ArrayDeque<>();
+				for (NodePortTuple node : listNodes) {
+					if (aux.contains(node.getNodeId())) {
+						aux.removeLast();
+						aux1.removeLast();
+					}
+					aux.add(node.getNodeId());
+					aux1.add(node);
+				}
+				listNodes.clear();
+				listNodes.addAll(aux1);
+				listNodes.remove(listNodes.size() - 1);
+				// calcula bandwitdth para esta rota
+				// log.trace("calculando bw para rota {}", listNodes);
+				long totalLinksUsage = 0L;
+				for (NodePortTuple node : listNodes) {
+					SwitchPortBandwidth consumo = null;
+					consumo = getBidirectionalBandwitdth(node.getNodeId(), node.getPortId());
+					if (consumo != null && consumo.getBitsPerSecondRx() != null) {
+						long linkUsage = consumo.getBitsPerSecondRx().getValue();
+						totalLinksUsage += linkUsage;					
+					} else {
+						log.trace("ERRO -- consumo é null para {}", node);
+					}
+					
+				}
+				calcPaths.put(new KeyMap(listNodes.hashCode(), totalLinksUsage), listNodes);
+				log.trace("Total_bw {} Kbps path {} ", new Object[] { totalLinksUsage / 1000, listNodes });
+			}
+
+			// return the min bandwitch path
+			long minUsage = Long.MAX_VALUE;
+			List<NodePortTuple> selectedPath = null;
+			for (Entry<KeyMap, List<NodePortTuple>> entry : calcPaths.entrySet()) {
+				long usage = entry.getKey().totalBandwitdth;
+				if (usage < minUsage) {
+					minUsage = usage;
+					selectedPath = entry.getValue();
+				}
+			}
+			// TODO precisa adcionar o link entre o edge e o target host
+			selectedPath.add(new NodePortTuple(dstSwitchPort.getNodeId(), dstSwitchPort.getPortId()));
+			log.trace(">>>> selected bw {} path {}", minUsage, selectedPath);
+			return selectedPath;
+		} catch (Exception e) {
+			log.trace("Erro ao selecionar paths {}",e.getLocalizedMessage());
 			return null;
 		}
-		SwitchPort srcSwitchPort = null;
-		SwitchPort dstSwitchPort = null;
-		// find src switch
-		for (SwitchPort att : srcDevice.getAttachmentPoints()) {
-			srcSwitchPort = att;
-			break;
-		}
-		// find dst switch
-		for (SwitchPort att : dstDevice.getAttachmentPoints()) {
-			dstSwitchPort = att;
-			break;
-		}
-		if (srcSwitchPort == null && dstSwitchPort == null) {
-			log.info("Não foi encontrado switch para os devices");
-			return null;
-		}
-
-		/*
-		 * List<Path> paths =
-		 * serviceRoutingEngine.getPathsSlow(srcSwitchPort.getNodeId(),
-		 * dstSwitchPort.getNodeId(), serviceRoutingEngine.getMaxPathsToCompute());
-		 */
-		List<Path> paths = serviceRoutingEngine.getPathsFast(srcSwitchPort.getNodeId(), dstSwitchPort.getNodeId());
-		if (paths == null || paths.isEmpty()) {
-			log.info("Não foi encontrado caminho entre os switches");
-			return null;
-		}
-
-		// calcula bandwitdth de todos os caminhos possíveis
-		Map<KeyMap, List<NodePortTuple>> calcPaths = new HashMap<>(); // calcPaths = [{{hash1,10Mb},[sw1,sw2,sw3]},
-																		// {hash2,200Mb},[sw1,sw3]}]
-
-		for (Path path : paths) {
-			// remove as portas de entrada deixando apenas as portas de saida
-			List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
-			listNodes.addAll(path.getPath());
-
-			ArrayDeque<DatapathId> aux = new ArrayDeque<>();
-			ArrayDeque<NodePortTuple> aux1 = new ArrayDeque<>();
-			for (NodePortTuple node : listNodes) {
-				if (aux.contains(node.getNodeId())) {
-					aux.removeLast();
-					aux1.removeLast();
-				}
-				aux.add(node.getNodeId());
-				aux1.add(node);
-			}
-			listNodes.clear();
-			listNodes.addAll(aux1);
-			listNodes.remove(listNodes.size() - 1);
-			// calcula bandwitdth para esta rota
-			// log.info("calculando bw para rota {}", listNodes);
-			long totalLinksUsage = 0L;
-			for (NodePortTuple node : listNodes) {
-				SwitchPortBandwidth consumo = null;
-				consumo = getBidirectionalBandwitdth(node.getNodeId(), node.getPortId());
-				if (consumo != null && consumo.getBitsPerSecondRx() != null) {
-					long linkUsage = consumo.getBitsPerSecondRx().getValue();
-					totalLinksUsage += linkUsage;					
-				} else {
-					log.info("ERRO -- consumo é null para {}", node);
-				}
-				
-			}
-			calcPaths.put(new KeyMap(listNodes.hashCode(), totalLinksUsage), listNodes);
-			log.info("Total_bw {} Kbps path {} ", new Object[] { totalLinksUsage / 1000, listNodes });
-		}
-
-		// return the min bandwitch path
-		long minUsage = Long.MAX_VALUE;
-		List<NodePortTuple> selectedPath = null;
-		for (Entry<KeyMap, List<NodePortTuple>> entry : calcPaths.entrySet()) {
-			long usage = entry.getKey().totalBandwitdth;
-			if (usage < minUsage) {
-				minUsage = usage;
-				selectedPath = entry.getValue();
-			}
-		}
-		// TODO precisa adcionar o link entre o edge e o target host
-		selectedPath.add(new NodePortTuple(dstSwitchPort.getNodeId(), dstSwitchPort.getPortId()));
-		log.info(">>>> selected bw {} path {}", minUsage, selectedPath);
-		return selectedPath;
 
 	}
 
@@ -387,7 +396,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 			} else {
 				Set<Link> links = serviceLinkDiscovery.getSwitchLinks().get(key);
 				for (Link link : links) {
-					// log.info("link {}",link);
+					// log.trace("link {}",link);
 
 					if ((link.getSrc().equals(key) && link.getSrcPort().equals(portNo))) {
 						target = new NodePortTuple(link.getDst(), link.getDstPort());
@@ -410,14 +419,14 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 
 	// TODO
 	private List<NodePortTuple> getFirstPath(MacAddress srcMac, MacAddress dstMac) {
-		log.info("getBandwidthPath");
+		log.trace("getBandwidthPath");
 
 		/*
 		 * Map<NodePortTuple, SwitchPortBandwidth> bandwidthComsumpition =
 		 * serviceStatistics.getBandwidthConsumption(); for( Entry<NodePortTuple,
 		 * SwitchPortBandwidth> entry:bandwidthComsumpition.entrySet()) {
-		 * log.info("NodePort {} Consumo: {} bit/s",entry.getKey(),entry.getValue().
-		 * getLinkSpeedBitsPerSec().getValue()); //log.info("Node Port: {} Consumo {}",
+		 * log.trace("NodePort {} Consumo: {} bit/s",entry.getKey(),entry.getValue().
+		 * getLinkSpeedBitsPerSec().getValue()); //log.trace("Node Port: {} Consumo {}",
 		 * new Object[] {entry.getKey(),entry.getValue().getStartTime_ns()}); }
 		 */
 		SwitchPort srcSwPort = findSwitchPort(srcMac);
@@ -469,7 +478,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = swPortIp.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
+			log.trace("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
 			return true;
 		}
 
@@ -479,7 +488,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = swPortMac.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
+			log.trace("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
 			return true;
 		}
 
@@ -494,7 +503,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = target.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send broadcast to {}", target);
+			log.trace("send broadcast to {}", target);
 		}
 		return false;
 
@@ -630,7 +639,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
 		Map<DatapathId, IOFSwitch> allSwitchMap = serviceSwitch.getAllSwitchMap();
 		for (Entry<DatapathId, IOFSwitch> entry : allSwitchMap.entrySet()) {
-			// log.info("sw {} ports {}", entry.getKey(),
+			// log.trace("sw {} ports {}", entry.getKey(),
 			// entry.getValue().getEnabledPortNumbers());
 			for (OFPort port : entry.getValue().getEnabledPortNumbers()) {
 				U.add(new NodePortTuple(entry.getKey(), port));
@@ -643,7 +652,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				A.add(node);
 			}
 		}
-		log.info("broadcast ports {}", A);
+		log.trace("broadcast ports {}", A);
 		return A;
 
 	}
@@ -751,7 +760,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		serviceStatistics = context.getServiceImpl(IStatisticsService.class);
 		serviceThread = context.getServiceImpl(IThreadPoolService.class);
 
-		long flowStatsInterval = 20;
+		long flowStatsInterval = 25;
 		bandwitdthMonitor = new BandwitdthMonitor();
 		serviceThread.getScheduledExecutor().scheduleAtFixedRate(bandwitdthMonitor, flowStatsInterval,
 				flowStatsInterval, TimeUnit.SECONDS);
@@ -777,9 +786,9 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 		@Override
 		public void run() {
 
-			log.info("run Bandwitdth colector");
+			log.trace("run Bandwitdth colector");
 			try {
-				statsColector();
+				//statsColector();
 				
 			}catch (Exception e) {
 				log.error("Erro ao coletar estatísticas {}",e.getMessage());
@@ -806,12 +815,12 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 						SwitchPortBandwidth bandwitdth = getBidirectionalBandwitdth(entry.getKey(), portDesc.getPortNo());
 						
 						if (bandwitdth != null) {
-							log.info("OK ---sw {}-{} speed {} Kbps",
+							log.trace("OK ---sw {}-{} speed {} Kbps",
 									new Object[] { entry.getKey(), portDesc.getPortNo(),
 											(bandwitdth.getBitsPerSecondRx().getValue()) / 1000 });
 
 						} else {
-							log.info("ERRO --- sw {}-{}", new Object[] { entry.getKey(), portDesc.getPortNo() });
+							log.trace("ERRO --- sw {}-{}", new Object[] { entry.getKey(), portDesc.getPortNo() });
 						}
 					}
 				}
@@ -853,7 +862,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				}
 				
 			}
-			log.info("getBidirectionalBandwitdth fail");
+			log.trace("getBidirectionalBandwitdth fail");
 			return null;
 		}
 
@@ -865,7 +874,7 @@ public class BWForwarding implements IFloodlightModule, IOFMessageListener {
 				if (ethType != null) {
 					long bytes = value.getByteCount().getValue();
 					Math.log10(bytes);
-					log.info("sw {} match: {} stats {} Mb", new Object[] { key.getValue(), key.getKey(),
+					log.trace("sw {} match: {} stats {} Mb", new Object[] { key.getValue(), key.getKey(),
 							(value.getByteCount().getValue() / 1000) / 1000 });
 				}
 			}

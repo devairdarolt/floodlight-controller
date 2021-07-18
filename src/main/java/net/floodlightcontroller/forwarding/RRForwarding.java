@@ -135,10 +135,10 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			// TODO Modificar caso seja necessário que o controlador seja avisado quando um fluxo expirar
 			break;
 		case ERROR:			
-			log.info("Ocorreu um erro no switch {}",sw.getSwitchDescription().getDatapathDescription());
+			log.trace("Ocorreu um erro no switch {}",sw.getSwitchDescription().getDatapathDescription());
 			break;
 		default:
-			log.info("O controlador recebeu uma mensagem inesperada");
+			log.trace("O controlador recebeu uma mensagem inesperada");
 			break;
 
 		}
@@ -238,7 +238,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				addFlow(sw, match, node);
 
 			}
-			log.info("{} >> {} addFlow {}", srcMac, dstMac, switches);
+			log.trace("{} >> {} addFlow {}", srcMac, dstMac, switches);
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// PACKET OUT -- in the first hop
@@ -275,7 +275,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = swPortIp.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
+			log.trace("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
 			return true;
 		}
 
@@ -285,7 +285,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = swPortMac.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
+			log.trace("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
 			return true;
 		}
 
@@ -300,7 +300,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				return false;
 			OFPort egresPort = target.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send broadcast to {}", target);
+			log.trace("send broadcast to {}", target);
 		}
 		return false;
 
@@ -418,7 +418,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
 		Map<DatapathId, IOFSwitch> allSwitchMap = serviceSwitch.getAllSwitchMap();
 		for (Entry<DatapathId, IOFSwitch> entry : allSwitchMap.entrySet()) {
-			// log.info("sw {} ports {}", entry.getKey(),
+			// log.trace("sw {} ports {}", entry.getKey(),
 			// entry.getValue().getEnabledPortNumbers());
 			for (OFPort port : entry.getValue().getEnabledPortNumbers()) {
 				U.add(new NodePortTuple(entry.getKey(), port));
@@ -431,7 +431,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 				A.add(node);
 			}
 		}
-		log.info("broadcast ports {}", A);
+		log.trace("broadcast ports {}", A);
 		return A;
 
 	}

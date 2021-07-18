@@ -131,10 +131,10 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		case PACKET_IN:
 			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
 		case ERROR:
-			log.info("Ocorreu um erro no switch {}", sw.getSwitchDescription().getDatapathDescription());
+			log.trace("Ocorreu um erro no switch {}", sw.getSwitchDescription().getDatapathDescription());
 			break;
 		default:
-			log.info("O controlador recebeu uma mensagem inesperada");
+			log.trace("O controlador recebeu uma mensagem inesperada");
 			break;
 
 		}
@@ -234,7 +234,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				addFlow(sw, match, node);
 
 			}
-			log.info("{} >> {} addFlow {}", srcMac, dstMac, switches);
+			log.trace("{} >> {} addFlow {}", srcMac, dstMac, switches);
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// PACKET OUT -- in the first hop
@@ -249,7 +249,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 	}
 
 	private List<NodePortTuple> getPath(MacAddress srcMac, MacAddress dstMac) {
-		log.info("getPath");
+		log.trace("getPath");
 		
 		
 		SwitchPort srcSwPort = findSwitchPort(srcMac);
@@ -257,7 +257,10 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		if(srcSwPort==null ||dstSwPort==null) {
 			return null;
 		}
+		showAllPath(srcSwPort.getNodeId(),dstSwPort.getNodeId());
+		//Path path = serviceRoutingEngine.getPath(srcSwPort.getNodeId(), dstSwPort.getNodeId());
 		Path path = serviceRoutingEngine.getPath(srcSwPort.getNodeId(), dstSwPort.getNodeId());
+		
 		List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
 		listNodes.addAll(path.getPath());
 		listNodes.add(new NodePortTuple(dstSwPort.getNodeId(), dstSwPort.getPortId()));
@@ -277,6 +280,26 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		listNodes.addAll(aux1);
 		
 		return listNodes;		
+	}
+
+	private void showAllPath(DatapathId nodeId, DatapathId nodeId2) {
+		
+		List<Path> paths = serviceRoutingEngine.getPathsFast(nodeId, nodeId2);
+		log.trace("Metrics {}",serviceRoutingEngine.getPathMetric());
+		
+		log.trace("Paths encontrados: {}",paths.size());
+		for(Path path:paths) {
+			List<String> switches = new ArrayList<>(); 
+			for(NodePortTuple node :path.getPath()) {
+				if(!switches.contains(serviceSwitch.getSwitch(node.getNodeId()).getSwitchDescription().getDatapathDescription())) {
+					switches.add(serviceSwitch.getSwitch(node.getNodeId()).getSwitchDescription().getDatapathDescription());					
+				}
+			}
+			log.trace("Paths {} latency: {}",switches,path.getLatency().getValue());
+		}
+		
+		
+		
 	}
 
 	/**
@@ -302,7 +325,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				return false;
 			OFPort egresPort = swPortIp.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
+			log.trace("send ARP targeted IP {} to {}", arp.getTargetProtocolAddress(), swPortIp);
 			return true;
 		}
 
@@ -312,7 +335,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				return false;
 			OFPort egresPort = swPortMac.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
+			log.trace("send ARP targeted mac {} to {}", arp.getTargetHardwareAddress(), swPortMac);
 			return true;
 		}
 
@@ -327,7 +350,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				return false;
 			OFPort egresPort = target.getPortId();
 			writePacketOutForPacketIn(sw, packetIn, egresPort);
-			log.info("send broadcast to {}", target);
+			log.trace("send broadcast to {}", target);
 		}
 		return false;
 
@@ -463,7 +486,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		Set<NodePortTuple> U = new HashSet<NodePortTuple>();
 		Map<DatapathId, IOFSwitch> allSwitchMap = serviceSwitch.getAllSwitchMap();
 		for (Entry<DatapathId, IOFSwitch> entry : allSwitchMap.entrySet()) {
-			// log.info("sw {} ports {}", entry.getKey(),
+			// log.trace("sw {} ports {}", entry.getKey(),
 			// entry.getValue().getEnabledPortNumbers());
 			for (OFPort port : entry.getValue().getEnabledPortNumbers()) {
 				U.add(new NodePortTuple(entry.getKey(), port));
@@ -476,7 +499,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				A.add(node);
 			}
 		}
-		log.info("broadcast ports {}", A);
+		log.trace("broadcast ports {}", A);
 		return A;
 
 	}
