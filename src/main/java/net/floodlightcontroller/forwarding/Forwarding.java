@@ -699,9 +699,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		Match m = createMatchFromPacket(sw, srcPort, pi, cntx);
 
 		if (!path.getPath().isEmpty()) {
+			/*log.info("pushRoute inPort={} route={} " + "destination={}:{}",
+					new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });*/
 			if (log.isDebugEnabled()) {
-				log.debug("pushRoute inPort={} route={} " + "destination={}:{}",
-						new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });
 				log.debug("Creating flow rules on the route, match rule: {}", m);
 			}
 

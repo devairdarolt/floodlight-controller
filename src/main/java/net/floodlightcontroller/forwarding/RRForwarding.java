@@ -84,7 +84,7 @@ import net.floodlightcontroller.virtualnetwork.VirtualNetworkFilter;
 
 @SuppressWarnings("unused")
 public class RRForwarding implements IFloodlightModule, IOFMessageListener {
-	//statics
+	// statics
 	public static final long COOKIE = 333;
 	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
 	private static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
@@ -101,14 +101,15 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	IFloodlightProviderService serviceFloodlightProvider;
 
 	// Internal stats
-	private RR roundRobin;//Selector path
-	
-	protected DeviceListenerImpl deviceListener;	
-	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet; //Todos os switches que contém portas com liks para hosts
+	private RR roundRobin;// Selector path
+
+	protected DeviceListenerImpl deviceListener;
+	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet; // Todos os switches que contém portas com liks para
+																// hosts
 
 	@Override
 	public String getName() {
-		
+
 		return RRForwarding.class.getName();
 	}
 
@@ -121,7 +122,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
 		return false;
 	}
-	
+
 	/**
 	 * Default message worker
 	 */
@@ -132,10 +133,11 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			return processPacketIn(sw, OFPacketIn.class.cast(msg), cntx);
 
 		case FLOW_REMOVED:
-			// TODO Modificar caso seja necessário que o controlador seja avisado quando um fluxo expirar
+			// TODO Modificar caso seja necessário que o controlador seja avisado quando um
+			// fluxo expirar
 			break;
-		case ERROR:			
-			log.trace("Ocorreu um erro no switch {}",sw.getSwitchDescription().getDatapathDescription());
+		case ERROR:
+			log.trace("Ocorreu um erro no switch {}", sw.getSwitchDescription().getDatapathDescription());
 			break;
 		default:
 			log.trace("O controlador recebeu uma mensagem inesperada");
@@ -144,8 +146,11 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 		return Command.STOP;
 	}
+
 	/**
-	 * Função responsável por fazer inserir as regras em switches para tratar o encaminhamento de fluxo
+	 * Função responsável por fazer inserir as regras em switches para tratar o
+	 * encaminhamento de fluxo
+	 * 
 	 * @param sw
 	 * @param packetIn
 	 * @param cntx
@@ -166,7 +171,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		}
 
 		if (eth.getEtherType().equals(EthType.ARP)) {
-			boolean ARPprocessed = proxyARP(packetIn, cntx);			
+			boolean ARPprocessed = proxyARP(packetIn, cntx);
 			return Command.CONTINUE;
 
 		}
@@ -182,18 +187,17 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			mb.setExact(MatchField.IPV4_DST, ipv4Packet.getDestinationAddress());
 			mb.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 			if (ipv4Packet.getProtocol().equals(IpProtocol.TCP)) {
-				mb.setExact(MatchField.IP_PROTO,IpProtocol.TCP);
+				mb.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 				TCP protocol = TCP.class.cast(ipv4Packet.getPayload());
-				mb.setExact(MatchField.TCP_SRC,protocol.getSourcePort());
+				mb.setExact(MatchField.TCP_SRC, protocol.getSourcePort());
 				mb.setExact(MatchField.TCP_DST, protocol.getDestinationPort());
-				
 
 			} else if (ipv4Packet.getProtocol().equals(IpProtocol.UDP)) {
-				mb.setExact(MatchField.IP_PROTO,IpProtocol.UDP);
+				mb.setExact(MatchField.IP_PROTO, IpProtocol.UDP);
 				UDP protocol = UDP.class.cast(ipv4Packet.getPayload());
-				mb.setExact(MatchField.TCP_SRC,protocol.getSourcePort());
+				mb.setExact(MatchField.TCP_SRC, protocol.getSourcePort());
 				mb.setExact(MatchField.TCP_DST, protocol.getDestinationPort());
-				
+
 			}
 			Match match = mb.build();
 
@@ -227,7 +231,7 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 			Iterator<NodePortTuple> nodeItr = nodes.iterator();
 			NodePortTuple outNodePort = null;
-			
+
 			List<String> switches = new ArrayList<>();
 			while (nodeItr.hasNext()) {
 				NodePortTuple node = nodeItr.next();// Link in
@@ -481,9 +485,10 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		flowBuilder.setPriority(FLOWMOD_PRIORITY);
 		flowBuilder.setOutPort(node.getPortId());
 		Set<OFFlowModFlags> flags = new HashSet<OFFlowModFlags>();
-		//flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser removido quando o
-												// idl-timeout ocorrer
-		//flowBuilder.setFlags(flags);
+		// flags.add(OFFlowModFlags.SEND_FLOW_REM);// Flag para marcar o fluxo par ser
+		// removido quando o
+		// idl-timeout ocorrer
+		// flowBuilder.setFlags(flags);
 
 		// ACTIONS
 		List<OFAction> actions = new ArrayList<OFAction>();
@@ -496,7 +501,6 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 		// logger.info("Flow ADD node{} port {}", swit, node.getPortId());
 	}
 
-	
 	public void pushPacket(IPacket packet, IOFSwitch sw, OFBufferId bufferId, OFPort inPort, OFPort outPort,
 			FloodlightContext cntx, boolean flush) {
 
@@ -645,10 +649,28 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 			}
 			List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
 
+			log.info("Paths size {}", paths.size());
+			String repitedNode = "";
+			for (Path p : paths) {
+				List<String> pathDesc = new ArrayList<>();
+				for (NodePortTuple node : p.getPath()) {
+
+					IOFSwitch swt = serviceSwitch.getSwitch(node.getNodeId());
+					if(!repitedNode.equals(swt.getSwitchDescription().getDatapathDescription())) {
+						pathDesc.add(swt.getSwitchDescription().getDatapathDescription());
+						repitedNode = swt.getSwitchDescription().getDatapathDescription();
+					}
+
+				}
+				log.info("Paths {}", pathDesc);
+
+			}
+
 			if (!paths.isEmpty()) {
 				// log.trace("Não existe path entre src/dst, os dois podem pertencer ao mesmo
 				// switch");
 				// repassa o primeiro para o final da lista
+
 				path = paths.removeFirst();
 				paths.addLast(path);
 				listNodes.addAll(path.getPath());
@@ -762,12 +784,12 @@ public class RRForwarding implements IFloodlightModule, IOFMessageListener {
 
 		@Override
 		public void deviceIPV4AddrChanged(IDevice device) {
-			//ignore
+			// ignore
 		}
 
 		@Override
 		public void deviceIPV6AddrChanged(IDevice device) {
-			//ignore
+			// ignore
 		}
 
 		@Override

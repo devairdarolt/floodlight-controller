@@ -61,7 +61,6 @@ import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
-import net.floodlightcontroller.forwarding.RRForwarding.RR.Key;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.linkdiscovery.Link;
 import net.floodlightcontroller.linkdiscovery.internal.LinkInfo;
@@ -86,14 +85,14 @@ import net.floodlightcontroller.virtualnetwork.IVirtualNetworkService;
 import net.floodlightcontroller.virtualnetwork.VirtualNetworkFilter;
 
 @SuppressWarnings("unused")
-public class ProativeForwarding implements IFloodlightModule, IOFMessageListener {
+public class ECMPForwarding implements IFloodlightModule, IOFMessageListener {
 	// statics
 	public static final long COOKIE = 333;
 	private static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
 	private static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
 	private static short FLOWMOD_PRIORITY = 100;
 
-	protected static final Logger log = LoggerFactory.getLogger(ProativeForwarding.class);
+	protected static final Logger log = LoggerFactory.getLogger(ECMPForwarding.class);
 
 	// Dependencies
 	private IRoutingService serviceRoutingEngine;
@@ -106,53 +105,11 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 
 	protected ConcurrentSkipListSet<DatapathId> edgeSwitchSet; // Todos os switches que contém portas com liks para
 																// hosts
-	public class Key {
-		private MacAddress origem;
-		private MacAddress destino;
 
-		public Key(MacAddress org, MacAddress dst) {
-			//super();
-			this.origem = org;
-			this.destino = dst;
-		}
-	}
-	private Map<Key, Integer> flowCount;
-	
-	private void showFlowsStats() {
-		Long totalFlows = 0L;
-		for(Entry<Key, Integer> entry:flowCount.entrySet()) {
-			log.info("h{} h{} flows {}",entry.getKey().origem.getLong(),entry.getKey().destino.getLong(),entry.getValue());
-			totalFlows += entry.getValue();
-		}
-		log.info("Total flows: {}",totalFlows);
-	}
-	private void flowCount(MacAddress srcMac, MacAddress dstMac) {
-		boolean contains = false;
-		
-		for(Entry<Key, Integer> entry:flowCount.entrySet()) {
-			Key key = entry.getKey();
-			if(key.origem.equals(srcMac) && key.destino.equals(dstMac)) {
-				contains = true;
-				entry.setValue(entry.getValue()+1);
-				//log.info("FlowCount {}  {}:{}",srcMac,dstMac,entry.getValue());
-				return;
-			}
-		}
-		if(!contains) {
-			Key key = new Key(srcMac, dstMac);
-			Integer value = 1;
-			flowCount.put(key, value);
-			//log.info("FlowCount creating {}  {}:{}",srcMac,dstMac,1);
-		}
-		return;
-		
-	}
-	
-	
 	@Override
 	public String getName() {
 
-		return ProativeForwarding.class.getName();
+		return ECMPForwarding.class.getName();
 	}
 
 	@Override
@@ -218,7 +175,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 			// MATCH
 			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			IPv4 ipv4Packet = IPv4.class.cast(eth.getPayload());
-			
+
 			Match.Builder mb = sw.getOFFactory().buildMatch();
 			mb.setExact(MatchField.IPV4_SRC, ipv4Packet.getSourceAddress());
 			mb.setExact(MatchField.IPV4_DST, ipv4Packet.getDestinationAddress());
@@ -242,25 +199,12 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 			// GET ROUTE -- RR
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			List<NodePortTuple> nodes = null;
+			nodes = getPath(sw,srcMac, dstMac);
 
-			if (!isOnTheSameSwitch(srcMac, dstMac, sw)) {
-				nodes = getPath(srcMac, dstMac);
-				/*
-				 * TODO: getPath() nodes = roundRobin.getNextPath(srcMac, dstMac,
-				 * ipv4Packet.getSourceAddress(), ipv4Packet.getDestinationAddress());
-				 */
-
-			} else {
-				nodes = new ArrayList<>();
-				SwitchPort swPort = findSwitchPort(ipv4Packet.getDestinationAddress());
-				nodes.add(new NodePortTuple(swPort.getNodeId(), swPort.getPortId()));
-			}
 			if (nodes == null) {
 				log.trace("Não foi encontrado Path entre src e dst");
 				return Command.CONTINUE;
 			}
-			
-			flowCount(srcMac,dstMac);
 			log.trace("Path {}", nodes);
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// ADD FLOW -- para cada node
@@ -279,7 +223,6 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				addFlow(sw, match, node);
 
 			}
-			
 			log.trace("{} >> {} addFlow {}", srcMac, dstMac, switches);
 
 			////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -290,17 +233,11 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 				log.trace("PacketOut {}{}", sw, outNodePort.getPortId());
 				writePacketOutForPacketIn(sw, packetIn, outNodePort.getPortId());
 			}
-			//Save Flow Stats
-			flowCount(srcMac,dstMac);
-			//showFlowsStats();
-			
 		}
 		return Command.CONTINUE;
 	}
 
-	
-
-	private List<NodePortTuple> getPath(MacAddress srcMac, MacAddress dstMac) {
+	private List<NodePortTuple> getPath(IOFSwitch sw, MacAddress srcMac, MacAddress dstMac) {
 		log.trace("getPath");
 		
 		
@@ -309,8 +246,10 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		if(srcSwPort==null ||dstSwPort==null) {
 			return null;
 		}
-		showAllPath(srcSwPort.getNodeId(),dstSwPort.getNodeId());
+		//showAllPath(srcSwPort.getNodeId(),dstSwPort.getNodeId());
 		//Path path = serviceRoutingEngine.getPath(srcSwPort.getNodeId(), dstSwPort.getNodeId());
+		
+		List<Path> pathList = serviceRoutingEngine.getPathsFast(srcSwPort.getNodeId(), dstSwPort.getNodeId(), serviceRoutingEngine.getMaxPathsToCompute());
 		Path path = serviceRoutingEngine.getPath(srcSwPort.getNodeId(), dstSwPort.getNodeId());
 		
 		List<NodePortTuple> listNodes = new ArrayList<NodePortTuple>();
@@ -318,6 +257,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		listNodes.add(new NodePortTuple(dstSwPort.getNodeId(), dstSwPort.getPortId()));
 		
 		ArrayDeque<DatapathId> aux = new ArrayDeque<>();
+		
 		ArrayDeque<NodePortTuple> aux1 = new ArrayDeque<>();
 		for (NodePortTuple node : listNodes) {
 			if (aux.contains(node.getNodeId())) {
@@ -368,17 +308,7 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		SwitchPort swPortMac = findSwitchPort(dstMac);
 
 		ARP arp = ARP.class.cast(eth.getPayload());
-		
-		if(arp.getTargetProtocolAddress().equals(IPv4Address.of("10.10.10.10"))) {
-			log.info("CODIGO 1");
-			showFlowsStats();
-		}
-		if(arp.getTargetProtocolAddress().equals(IPv4Address.of("10.10.10.20"))) {
-			log.info("CODIGO 2");
-			//showFlowsStats();
-			flowCount.clear();
-		}
-		
+
 		SwitchPort swPortIp = findSwitchPort(arp.getTargetProtocolAddress());
 
 		if (swPortIp != null) {
@@ -668,7 +598,6 @@ public class ProativeForwarding implements IFloodlightModule, IOFMessageListener
 		serviceStatistics = context.getServiceImpl(IStatisticsService.class);
 		// roundRobin = new RR();
 		edgeSwitchSet = new ConcurrentSkipListSet<DatapathId>();
-		flowCount = new HashMap<ProativeForwarding.Key, Integer>();
 
 	}
 
