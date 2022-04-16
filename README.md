@@ -1,4 +1,6 @@
-<h3> ANOTAÇÕES </h3>
+<h2>REPOSITÓRIO PESSOAL PARA ESTUDO DO CONTROLADOR FLOODLIGHT</h2>
+
+
 
 Algoritmos multipath encontrados:
 
@@ -54,7 +56,7 @@ Algoritmos multipath encontrados:
 
 3. Clonar o repositório do git (master)
 	
-	
+><b>Repositório original</b>
 >$ git clone git://github.com/floodlight/floodlight.git
 
 >$ cd floodlight                               
@@ -76,7 +78,6 @@ Algoritmos multipath encontrados:
 	
 
 >$ mvn package -DskipTests
-
 
 
 <h3>Comandos curl para o statcetrypush</h3>
