@@ -35,7 +35,7 @@ Algoritmos multipath encontrados:
 >$xrandr --output DP-2-1 --mode 2560x1440
 
 
-<h3>INSTALER E COMPILAR O FLOODLIGHT</h3>
+<h3>INSTALAR E COMPILAR O FLOODLIGHT</h3>
 
 	
 1.  Instalar o Java 8
@@ -54,9 +54,21 @@ Algoritmos multipath encontrados:
 		
 >$ sudo apt-get install build-essential ant maven python-dev eclipse
 
-3. Clonar o repositório do git (master)
+3. Clonar repositório para o estudo do floodlight 
+
+>$ git clone https://github.com/devairdarolt/sdn_floodlight.git
+
+4. Compilar com o maven
+
+>$ mvn package -DskipTests
+
+4. Rodar o controlador
+> java -jar ./target/floodlight.jar
+
+4. Clonar o repositório do git (master)
 	
-><b>Repositório original</b>
+<b>Repositório original</b>
+
 >$ git clone git://github.com/floodlight/floodlight.git
 
 >$ cd floodlight                               
@@ -66,9 +78,6 @@ Algoritmos multipath encontrados:
 >$ git submodule init
 
 >$ git submodule update                       # (baixa a nova interface UI)
-
-
->$ sudo chmod 777 .
 
 >$ sudo mkdir /var/lib/floodlight
 
@@ -179,7 +188,7 @@ Remover Queue através do id
 >--id=@newqos create QoS type=linux-htb other-config:max-rate=1000000000 queues=0=@q0 -- # Configura limite maximo para 1 GBs
 >--id=@q0 create Queue other-config:min-rate=4000000 other-config:max-rate=4000000		 # Cria uma queue de 4 Mbs --- Tudo que for colocado nessa lista terá a largura de banda limitada a 4Mbs
 
-#Exemplo
+<b>Exemplo<b>
 s1   (Total:1GB, q0:100Mb, q1:5Mb)
 >ovs-vsctl -- set Port s1-eth1 qos=@newqos -- set Port s1-eth2 qos=@newqos -- --id=@newqos   create   QoS    type=linux-htb    other-config:max-rate=1000000000 queues=0=@q0,1=@q1 -- --id=@q0   create   Queue   other-config:min-rate=100000000 other-config:max-rate=100000000 -- --id=@q1 create Queue other-config:min-rate=5000000
 
