@@ -1,0 +1,6 @@
+#!/bin/bash
+
+sudo mn  --controller=remote,ip=localhost,port=6653  --switch=ovsk,protocols=OpenFlow13  --mac --custom ./topo.py --topo mytopo
+
+#clear
+sudo mn -c

@@ -15,7 +15,7 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.forwarding;
+package net.floodlightcontroller.tutorial.five;
 
 import java.util.*;
 import java.util.Map.Entry;
@@ -62,14 +62,14 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
-public class Forwarding extends ForwardingBase implements IFloodlightModule, IOFSwitchListener, ILinkDiscoveryListener,
+public class Forward4 extends ForwardingBase implements IFloodlightModule, IOFSwitchListener, ILinkDiscoveryListener,
 		IRoutingDecisionChangedListener, IGatewayService {
-	protected static final Logger log = LoggerFactory.getLogger(Forwarding.class);
+	protected static final Logger log = LoggerFactory.getLogger(Forward4.class);
 
 	/*
 	 * Cookies are 64 bits: Example: 0x0123456789ABCDEF App ID: 0xFFF0000000000000
 	 * User: 0x000FFFFFFFFFFFFF
-	 * 
+	 *
 	 * Of the user portion, we further subdivide into routing decision bits and
 	 * flowset bits. The former relates the flow to routing decisions, such as
 	 * firewall allow or deny/drop. It allows for modification of the flows upon a
@@ -78,7 +78,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	 * devices or hosts in the network. It is used to assist in the entire flowset
 	 * removal upon a link or port down event anywhere along the path. This is
 	 * required in order to allow a new path to be used and a new flowset installed.
-	 * 
+	 *
 	 * TODO: shrink these masks if you need to add more subfields or need to allow
 	 * for a larger number of routing decisions or flowsets
 	 */
@@ -121,7 +121,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 		/**
 		 * Only for use by unit test to help w/ordering
-		 * 
+		 *
 		 * @param seed
 		 */
 		protected void seedFlowSetIdForUnitTest(int seed) {
@@ -136,7 +136,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 						FLOWSET_MAX);
 			}
 			U64 id = U64.of(flowSetGenerator << FLOWSET_SHIFT);
-			log.debug("Generating flowset ID {}, shifted {}", flowSetGenerator, id);
+			log.info("Generating flowset ID {}, shifted {}", flowSetGenerator, id);
 			return id;
 		}
 
@@ -203,13 +203,15 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		OFPort inPort = OFMessageUtils.getInPort(pi);
 		NodePortTuple npt = new NodePortTuple(sw.getId(), inPort);
 
-		log.trace("Processando PACKT_IN para >>> src[" + eth.getSourceMACAddress().toString() + "] dst["
-				+ eth.getDestinationMACAddress().toString() + "]");
+		/*
+		 * log.info("Processando PACKT_IN para >>> src[" +
+		 * eth.getSourceMACAddress().toString() + "] dst[" +
+		 * eth.getDestinationMACAddress().toString() + "]");
+		 */
 
 		if (decision != null) {
 			if (log.isTraceEnabled()) {
-				log.trace("Forwarding decision={} was made for PacketIn={}", decision.getRoutingAction().toString(),
-						pi);
+				log.trace("Forward4 decision={} was made for PacketIn={}", decision.getRoutingAction().toString(), pi);
 			}
 
 			switch (decision.getRoutingAction()) {
@@ -258,10 +260,12 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				}
 
 				if (!instance.isPresent()) {
-					log.trace("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), inPort);
+					log.info("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), inPort);
 					break;
 				}
-
+				log.info("\n\n");
+				log.info("[linha 265] >>>> PACKT_IN <<<<  src[" + eth.getSourceMACAddress().toString() + "] dst["
+						+ eth.getDestinationMACAddress().toString() + "]");
 				doL3Routing(eth, sw, pi, decision, cntx, instance.get(), inPort);
 				break;
 
@@ -313,17 +317,22 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL3Routing(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx, @Nonnull VirtualGatewayInstance gatewayInstance, OFPort inPort) {
 
-		log.trace("doL3Routing");
+		log.info("[linha 319] doL3Routing >>> srcMac {} dstMac {} eth{}",
+				new Object[] { eth.getSourceMACAddress(), eth.getDestinationMACAddress(), eth.getPayload() });
 		MacAddress gatewayMac = gatewayInstance.getGatewayMac();
 
 		if (eth.getEtherType() == EthType.IPv4) {
 			IPv4Address intfIpAddress = findInterfaceIP(gatewayInstance,
 					((IPv4) eth.getPayload()).getDestinationAddress());
 			if (intfIpAddress == null) {
-				log.debug("Can not locate corresponding interface for gateway {}, check its interface configuration",
+				log.info(
+						"[linha 326] Can not locate corresponding interface for gateway {}, check its interface configuration",
 						gatewayInstance.getName());
 				return;
 			}
+			log.info("[linha 330] srcMac {} srcIp {} InterfaceIP {} dstIp {}",
+					new Object[] { eth.getSourceMACAddress(), IPv4.class.cast(eth.getPayload()).getSourceAddress(),
+							intfIpAddress, IPv4.class.cast(eth.getPayload()).getDestinationAddress() });
 		}
 
 		if (isBroadcastOrMulticast(eth)) {
@@ -333,7 +342,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 					&& gatewayInstance.isAGatewayIntf(((ARP) eth.getPayload()).getTargetProtocolAddress())) {
 				IPacket arpReply = gatewayArpReply(cntx, gatewayMac);
 				pushArpReply(arpReply, sw, OFBufferId.NO_BUFFER, OFPort.ANY, inPort);
-				log.debug("Virtual gateway pushing ARP reply message to source host");
+				log.info("[linha 340]Virtual gateway pushing ARP reply message to source host");
 			} else {
 				doFlood(sw, pi, decision, cntx);
 			}
@@ -361,7 +370,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		OFPort srcPort = OFMessageUtils.getInPort(pi);
 
-		log.trace("doL3ForwardFlow");
+		log.info("[linha 368] doL3ForwardFlow");
 		MacAddress virtualGatewayMac = gateway.getGatewayMac();
 		DatapathId srcSw = sw.getId();
 		IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
@@ -377,17 +386,17 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				// L3 traffic at 1st hop, virtual gateway creates & floods ARP to learn
 				// destination device
 				if (eth.getEtherType() == EthType.IPv4 && eth.getDestinationMACAddress().equals(virtualGatewayMac)) {
-					log.debug("Virtual gateway creates and flood arp request packet for destination host");
+					log.info("[linha384] Virtual gateway creates and flood arp request packet for destination host");
 					doL3Flood(gateway, sw, pi, cntx);
 
 					l3cache.put(pi, eth);
-					log.debug("Add new packet-in associate with packet source {} and destination {} to cache",
+					log.info("[linha385] Add new packet-in associate with packet source {} and destination {} to cache",
 							((IPv4) eth.getPayload()).getSourceAddress(),
 							((IPv4) eth.getPayload()).getDestinationAddress());
 				}
 				// Normal L2 traffic
 				else {
-					log.debug("Destination device unknown. Flooding packet");
+					log.info("[linha 394] Destination device unknown. Flooding packet");
 					doFlood(sw, pi, decision, cntx);
 				}
 
@@ -396,14 +405,15 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		}
 
 		if (srcDevice == null) {
-			log.error("No device entry found for source device. Is the device manager running? If so, report bug.");
+			log.error(
+					"[linha 403] No device entry found for source device. Is the device manager running? If so, report bug.");
 			return;
 		}
 
 		/* Some physical switches partially support or do not support ARP flows */
 		if (FLOOD_ALL_ARP_PACKETS && IFloodlightProviderService.bcStore
 				.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD).getEtherType() == EthType.ARP) {
-			log.debug("ARP flows disabled in Forwarding. Flooding ARP packet");
+			log.info("[linha 410] ARP flows disabled in Forward4. Flooding ARP packet");
 			doFlood(sw, pi, decision, cntx);
 			return;
 		}
@@ -413,8 +423,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		 * along the path
 		 */
 		if (!topologyService.isEdge(srcSw, srcPort) && !eth.getDestinationMACAddress().equals(virtualGatewayMac)) {
-			log.debug(
-					"Packet destination is known, but packet was not received on an edge port (rx on {}/{}). Flooding packet",
+			log.info(
+					"[linha 420] Packet destination is known, but packet was not received on an edge port (rx on {}/{}). Flooding packet",
 					srcSw, srcPort);
 			doFlood(sw, pi, decision, cntx);
 			return;
@@ -444,19 +454,19 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		 */
 		if (dstAp == null) {
 			if (eth.getDestinationMACAddress().equals(virtualGatewayMac)) { // Try L3 Flood again
-				log.debug("Virtual gateway creates arp request packet to destination host and flooding");
+				log.info("Virtual gateway creates arp request packet to destination host and flooding");
 				doL3Flood(gateway, sw, pi, cntx);
 			} else { // Try L2 Flood again
-				log.debug("Could not locate edge attachment point for destination device {}. Flooding packet");
+				log.info("Could not locate edge attachment point for destination device {}. Flooding packet");
 				doFlood(sw, pi, decision, cntx);
 			}
 			return;
 		}
-
+		log.info("[linha 460] dstAP {}", dstAp);
 		/* Validate that the source and destination are not on the same switch port */
 		if (sw.getId().equals(dstAp.getNodeId()) && srcPort.equals(dstAp.getPortId())) {
-			log.debug("Both source and destination are on the same switch/port {}/{}. Dropping packet", sw.toString(),
-					srcPort);
+			log.info("[linha 463] Both source and destination are on the same switch/port {}/{}. Dropping packet",
+					sw.toString(), srcPort);
 			return;
 		}
 
@@ -469,11 +479,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			Match m = createMatchFromPacket(sw, srcPort, pi, cntx);
 
 			if (!path.getPath().isEmpty()) {
-				if (log.isDebugEnabled()) {
-					log.debug("pushRoute inPort={} route={} " + "destination={}:{}",
-							new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });
-					log.debug("Creating flow rules on the route, match rule: {}", m);
-				}
+
+				log.info("[linha 478] pushRoute inPort={} route={} " + "destination={}:{}",
+						new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });
+				log.info("[linha 480] Creating flow rules on the route, match rule: {}", m);
 
 				pushRoute(path, m, pi, sw.getId(), cookie, cntx, requestFlowRemovedNotifn, OFFlowModCommand.ADD, false);
 
@@ -494,19 +503,20 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			Match match = createMatchFromPacket(firstHop, srcPort, pi, cntx);
 
 			if (!path.getPath().isEmpty()) {
-				log.debug("L3 path is {}", path.getPath());
+				log.info("[linha 502] L3 path is {}", path.getPath());
 			}
 
 			OFPort outPort = path.getPath().get(path.getPath().size() - 1).getPortId();
 
 			buildRewriteFlows(pi, match, srcSw, outPort, cookie, virtualGatewayMac, dstDevice.getMACAddress(),
 					requestFlowRemovedNotifn);
+			log.info("[linha 509] buildRewriteFlows");
 
 			// Remove first hop, push routes as normal in the middle
 			Path newPath = getNewPath(path);
 			pushRoute(newPath, match, pi, sw.getId(), cookie, cntx, requestFlowRemovedNotifn, OFFlowModCommand.ADD,
 					packetOutSent);
-
+			log.info("[linha 515] pushRoute {}", newPath);
 			/* Register flow sets */
 			for (NodePortTuple npt : path.getPath()) {
 				flowSetIdRegistry.registerFlowSetId(npt, flowSetId);
@@ -570,10 +580,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		actions.add(factory.actions().output(outPort, Integer.MAX_VALUE));
 		flowAdd.setActions(actions);
 
-		if (log.isTraceEnabled()) {
-			log.trace("Pushing flowmod with srcMac={} dstMac={} " + "sw={} inPort={} outPort={}",
-					new Object[] { gatewayMac, hostMac, sw, flowAdd.getMatch().get(MatchField.IN_PORT), outPort });
-		}
+		log.info(
+				"[buildRewriteFlows] [linha 580]Pushing flowmod with srcMac={} dstMac={} "
+						+ "sw={} inPort={} outPort={}",
+				new Object[] { gatewayMac, hostMac, sw, flowAdd.getMatch().get(MatchField.IN_PORT), outPort });
 
 		messageDamper.write(switchService.getSwitch(sw), flowAdd.build());
 		return;
@@ -598,7 +608,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL2Forwarding(Ethernet eth, IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx) {
 
-		log.trace("doL2Forwarding");
+		log.info("doL2Forwarding");
 		if (isBroadcastOrMulticast(eth)) {
 			doFlood(sw, pi, decision, cntx);
 		} else {
@@ -624,10 +634,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
 		IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 
-		log.trace("doL2ForwardFlow - DatapathId [" + srcSw.toString() + "]");
+		log.info("doL2ForwardFlow - DatapathId [" + srcSw.toString() + "]");
 
 		if (dstDevice == null) {
-			log.debug("Destination device unknown. Flooding packet");
+			log.info("Destination device unknown. Flooding packet");
 			doFlood(sw, pi, decision, cntx);
 			return;
 		}
@@ -640,7 +650,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		/* Some physical switches partially support or do not support ARP flows */
 		if (FLOOD_ALL_ARP_PACKETS && IFloodlightProviderService.bcStore
 				.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD).getEtherType() == EthType.ARP) {
-			log.debug("ARP flows disabled in Forwarding. Flooding ARP packet");
+			log.info("ARP flows disabled in Forward4. Flooding ARP packet");
 			doFlood(sw, pi, decision, cntx);
 			return;
 		}
@@ -650,7 +660,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		 * along the path
 		 */
 		if (!topologyService.isEdge(srcSw, srcPort)) {
-			log.debug(
+			log.info(
 					"Packet destination is known, but packet was not received on an edge port (rx on {}/{}). Flooding packet",
 					srcSw, srcPort);
 			doFlood(sw, pi, decision, cntx);
@@ -680,14 +690,14 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		 * point of a link.
 		 */
 		if (dstAp == null) {
-			log.debug("Could not locate edge attachment point for destination device {}. Flooding packet");
+			log.info("Could not locate edge attachment point for destination device {}. Flooding packet");
 			doFlood(sw, pi, decision, cntx);
 			return;
 		}
 
 		/* Validate that the source and destination are not on the same switch port */
 		if (sw.getId().equals(dstAp.getNodeId()) && srcPort.equals(dstAp.getPortId())) {
-			log.debug("Both source and destination are on the same switch/port {}/{}. Dropping packet", sw.toString(),
+			log.info("Both source and destination are on the same switch/port {}/{}. Dropping packet", sw.toString(),
 					srcPort);
 			return;
 		}
@@ -699,10 +709,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		Match m = createMatchFromPacket(sw, srcPort, pi, cntx);
 
 		if (!path.getPath().isEmpty()) {
-			/*log.info("pushRoute inPort={} route={} " + "destination={}:{}",
-					new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });*/
 			if (log.isDebugEnabled()) {
-				log.debug("Creating flow rules on the route, match rule: {}", m);
+				log.info("pushRoute inPort={} route={} " + "destination={}:{}",
+						new Object[] { srcPort, path, dstAp.getNodeId(), dstAp.getPortId() });
+				log.info("Creating flow rules on the route, match rule: {}", m);
 			}
 
 			pushRoute(path, m, pi, sw.getId(), cookie, cntx, requestFlowRemovedNotifn, OFFlowModCommand.ADD, false);
@@ -822,7 +832,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				}
 			}
 		}
-
+		log.info("findDstDeviceForL3Routing dstIP{} dstDevice {}", dstIP, dstDevice);
 		return dstDevice;
 	}
 
@@ -855,7 +865,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	/**
 	 * Called when the handleDecisionChange is triggered by an event (routing
 	 * decision was changed in firewall).
-	 * 
+	 *
 	 * @param changedDecisions Masked routing descriptors for flows that should be
 	 *                         deleted from the switch.
 	 */
@@ -866,7 +876,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 	/**
 	 * Converts a sequence of masked IRoutingDecision descriptors into masked
-	 * Forwarding cookies.
+	 * Forward4 cookies.
 	 *
 	 * This generates a list of masked cookies that can then be matched in flow-mod
 	 * messages.
@@ -971,10 +981,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		}
 
 		if (log.isDebugEnabled()) {
-			log.debug("write drop flow-mod sw={} match={} flow-mod={}", new Object[] { sw, m, fmb.build() });
+			log.info("write drop flow-mod sw={} match={} flow-mod={}", new Object[] { sw, m, fmb.build() });
 		}
 		boolean dampened = messageDamper.write(sw, fmb.build());
-		log.debug("OFMessage dampened: {}", dampened);
+		log.info("OFMessage dampened: {}", dampened);
 	}
 
 	/**
@@ -982,7 +992,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	 * general as "in_port" and inadvertently Match packets erroneously, construct a
 	 * more specific Match based on the deserialized OFPacketIn's payload, which has
 	 * been placed in the FloodlightContext already by the Controller.
-	 * 
+	 *
 	 * @param sw,     the switch on which the packet was received
 	 * @param inPort, the ingress switch port on which the packet was received
 	 * @param cntx,   the current context which contains the deserialized packet
@@ -992,7 +1002,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		// The packet in match will only contain the port number.
 		// We need to add in specifics for the hosts we're routing between.
 
-		log.trace("createMatchFromPacket");
+		log.info("createMatchFromPacket");
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
 		VlanVid vlan = null;
@@ -1159,7 +1169,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	/**
 	 * Creates a OFPacketOut with the OFPacketIn data that is flooded on all ports
 	 * unless the port is blocked, in which case the packet will be dropped.
-	 * 
+	 *
 	 * @param sw       The switch that receives the OFPacketIn
 	 * @param pi       The OFPacketIn that came to the switch
 	 * @param decision The decision that caused flooding, or null
@@ -1167,14 +1177,15 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	 */
 	protected void doFlood(IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision, FloodlightContext cntx) {
 
-		log.trace("doFlood");
+		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
+		log.info("doFlood sw {} eth {} {}", sw, eth.getSourceMACAddress(), eth.getDestinationMACAddress());
 
 		OFPort inPort = OFMessageUtils.getInPort(pi);
 		OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
 		List<OFAction> actions = new ArrayList<>();
 		Set<OFPort> broadcastPorts = this.topologyService.getSwitchBroadcastPorts(sw.getId());
 		if (broadcastPorts.isEmpty()) {
-			log.debug("No broadcast ports found. Using FLOOD output action");
+			log.info("[linha 1182] No broadcast ports found. Using FLOOD output action");
 			broadcastPorts = Collections.singleton(OFPort.FLOOD);
 		}
 
@@ -1211,7 +1222,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	protected void doL3Flood(VirtualGatewayInstance gateway, IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
-		log.trace("doL3Flood");
+		log.info("doL3Flood");
 
 		MacAddress gatewayMac = gateway.getGatewayMac();
 
@@ -1241,7 +1252,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 		Set<OFPort> broadcastPorts = this.topologyService.getSwitchBroadcastPorts(sw.getId());
 		if (broadcastPorts.isEmpty()) {
-			log.debug("No broadcast ports found. Using FLOOD output action");
+			log.info("No broadcast ports found. Using FLOOD output action");
 			broadcastPorts = Collections.singleton(OFPort.FLOOD);
 		}
 
@@ -1317,37 +1328,37 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		String tmp = configParameters.get("hard-timeout");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_HARD_TIMEOUT = ParseUtils.parseHexOrDecInt(tmp);
-			log.trace("Default hard timeout set to {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			log.info("Default hard timeout set to {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		} else {
-			log.trace("Default hard timeout not configured. Using {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
+			log.info("Default hard timeout not configured. Using {}.", FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		}
 		tmp = configParameters.get("idle-timeout");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_IDLE_TIMEOUT = ParseUtils.parseHexOrDecInt(tmp);
-			log.trace("Default idle timeout set to {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			log.info("Default idle timeout set to {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		} else {
-			log.trace("Default idle timeout not configured. Using {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
+			log.info("Default idle timeout not configured. Using {}.", FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		}
 		tmp = configParameters.get("table-id");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_TABLE_ID = TableId.of(ParseUtils.parseHexOrDecInt(tmp));
-			log.trace("Default table ID set to {}.", FLOWMOD_DEFAULT_TABLE_ID);
+			log.info("Default table ID set to {}.", FLOWMOD_DEFAULT_TABLE_ID);
 		} else {
-			log.trace("Default table ID not configured. Using {}.", FLOWMOD_DEFAULT_TABLE_ID);
+			log.info("Default table ID not configured. Using {}.", FLOWMOD_DEFAULT_TABLE_ID);
 		}
 		tmp = configParameters.get("priority");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_PRIORITY = ParseUtils.parseHexOrDecInt(tmp);
-			log.trace("Default priority set to {}.", FLOWMOD_DEFAULT_PRIORITY);
+			log.info("Default priority set to {}.", FLOWMOD_DEFAULT_PRIORITY);
 		} else {
-			log.trace("Default priority not configured. Using {}.", FLOWMOD_DEFAULT_PRIORITY);
+			log.info("Default priority not configured. Using {}.", FLOWMOD_DEFAULT_PRIORITY);
 		}
 		tmp = configParameters.get("set-send-flow-rem-flag");
 		if (tmp != null) {
 			FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG = Boolean.parseBoolean(tmp);
-			log.trace("Default flags will be set to SEND_FLOW_REM {}.", FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG);
+			log.info("Default flags will be set to SEND_FLOW_REM {}.", FLOWMOD_DEFAULT_SET_SEND_FLOW_REM_FLAG);
 		} else {
-			log.trace("Default flags will be empty.");
+			log.info("Default flags will be empty.");
 		}
 		tmp = configParameters.get("match");
 		if (tmp != null) {
@@ -1364,7 +1375,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				FLOWMOD_DEFAULT_MATCH_TCP_FLAG = tmp.contains("flag") ? true : false;
 			}
 		}
-		log.trace("Default flow matches set to: IN_PORT=" + FLOWMOD_DEFAULT_MATCH_IN_PORT + ", VLAN="
+		log.info("Default flow matches set to: IN_PORT=" + FLOWMOD_DEFAULT_MATCH_IN_PORT + ", VLAN="
 				+ FLOWMOD_DEFAULT_MATCH_VLAN + ", MAC=" + FLOWMOD_DEFAULT_MATCH_MAC + ", IP=" + FLOWMOD_DEFAULT_MATCH_IP
 				+ ", FLAG=" + FLOWMOD_DEFAULT_MATCH_TCP_FLAG + ", TPPT=" + FLOWMOD_DEFAULT_MATCH_TRANSPORT);
 
@@ -1385,7 +1396,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				FLOWMOD_DEFAULT_MATCH_TRANSPORT_DST = tmp.contains("dst-transport") ? true : false;
 			}
 		}
-		log.trace("Default detailed flow matches set to: SRC_MAC=" + FLOWMOD_DEFAULT_MATCH_MAC_SRC + ", DST_MAC="
+		log.info("Default detailed flow matches set to: SRC_MAC=" + FLOWMOD_DEFAULT_MATCH_MAC_SRC + ", DST_MAC="
 				+ FLOWMOD_DEFAULT_MATCH_MAC_DST + ", SRC_IP=" + FLOWMOD_DEFAULT_MATCH_IP_SRC + ", DST_IP="
 				+ FLOWMOD_DEFAULT_MATCH_IP_DST + ", SRC_TPPT=" + FLOWMOD_DEFAULT_MATCH_TRANSPORT_SRC + ", DST_TPPT="
 				+ FLOWMOD_DEFAULT_MATCH_TRANSPORT_DST);
@@ -1396,10 +1407,10 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			if (!tmp.contains("yes") && !tmp.contains("yep") && !tmp.contains("true") && !tmp.contains("ja")
 					&& !tmp.contains("stimmt")) {
 				FLOOD_ALL_ARP_PACKETS = false;
-				log.trace("Not flooding ARP packets. ARP flows will be inserted for known destinations");
+				log.info("Not flooding ARP packets. ARP flows will be inserted for known destinations");
 			} else {
 				FLOOD_ALL_ARP_PACKETS = true;
-				log.trace("Flooding all ARP packets. No ARP flows will be inserted");
+				log.info("Flooding all ARP packets. No ARP flows will be inserted");
 			}
 		}
 
@@ -1408,9 +1419,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 			REMOVE_FLOWS_ON_LINK_OR_PORT_DOWN = Boolean.parseBoolean(tmp);
 		}
 		if (REMOVE_FLOWS_ON_LINK_OR_PORT_DOWN) {
-			log.trace("Flows will be removed on link/port down events");
+			log.info("Flows will be removed on link/port down events");
 		} else {
-			log.trace("Flows will not be removed on link/port down events");
+			log.info("Flows will not be removed on link/port down events");
 		}
 	}
 
@@ -1436,7 +1447,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 	@Override
 	public void switchRemoved(DatapathId switchId) {
 		l3manager.getAllVirtualGateways().stream().forEach(instance -> instance.removeSwitchFromInstance(switchId));
-		log.trace("Handle switchRemoved. Switch {} removed from virtual gateway instance", switchId.toString());
+		log.info("Handle switchRemoved. Switch {} removed from virtual gateway instance", switchId.toString());
 	}
 
 	@Override
@@ -1507,8 +1518,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 								/* Delete flows matching on src port and outputting to src port */
 								msgs = buildDeleteFlows(u.getSrcPort(), msgs, srcSw, cookie, cookieMask);
 								messageDamper.write(srcSw, msgs);
-								log.debug("src: Removing flows to/from DPID={}, port={}", u.getSrc(), u.getSrcPort());
-								log.debug("src: Cookie/mask {}/{}", cookie, cookieMask);
+								log.info("src: Removing flows to/from DPID={}, port={}", u.getSrc(), u.getSrcPort());
+								log.info("src: Cookie/mask {}/{}", cookie, cookieMask);
 
 								/*
 								 * Now, for each ID on this particular failed link, remove all other flows in
@@ -1524,9 +1535,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 											/* Delete flows matching on npt port and outputting to npt port */
 											msgs = buildDeleteFlows(npt.getPortId(), msgs, sw, cookie, cookieMask);
 											messageDamper.write(sw, msgs);
-											log.debug("src: Removing same-cookie flows to/from DPID={}, port={}",
+											log.info("src: Removing same-cookie flows to/from DPID={}, port={}",
 													npt.getNodeId(), npt.getPortId());
-											log.debug("src: Cookie/mask {}/{}", cookie, cookieMask);
+											log.info("src: Cookie/mask {}/{}", cookie, cookieMask);
 										}
 									}
 								}
@@ -1553,8 +1564,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 								/* Delete flows matching on dst port and outputting to dst port */
 								msgs = buildDeleteFlows(u.getDstPort(), msgs, dstSw, cookie, cookieMask);
 								messageDamper.write(dstSw, msgs);
-								log.debug("dst: Removing flows to/from DPID={}, port={}", u.getDst(), u.getDstPort());
-								log.debug("dst: Cookie/mask {}/{}", cookie, cookieMask);
+								log.info("dst: Removing flows to/from DPID={}, port={}", u.getDst(), u.getDstPort());
+								log.info("dst: Cookie/mask {}/{}", cookie, cookieMask);
 
 								/*
 								 * Now, for each ID on this particular failed link, remove all other flows in
@@ -1569,9 +1580,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 											/* Delete flows matching on npt port and outputting on npt port */
 											msgs = buildDeleteFlows(npt.getPortId(), msgs, sw, cookie, cookieMask);
 											messageDamper.write(sw, msgs);
-											log.debug("dst: Removing same-cookie flows to/from DPID={}, port={}",
+											log.info("dst: Removing same-cookie flows to/from DPID={}, port={}",
 													npt.getNodeId(), npt.getPortId());
-											log.debug("dst: Cookie/mask {}/{}", cookie, cookieMask);
+											log.info("dst: Cookie/mask {}/{}", cookie, cookieMask);
 										}
 									}
 								}
@@ -1630,25 +1641,25 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 	@Override
 	public void deleteGatewayInstances() {
-		log.trace("All virtual gateways deleted");
+		log.info("All virtual gateways deleted");
 		l3manager.removeAllVirtualGateways();
 	}
 
 	@Override
 	public boolean deleteGatewayInstance(String name) {
-		log.trace("Virtual gateway {} deleted", name);
+		log.info("Virtual gateway {} deleted", name);
 		return l3manager.removeVirtualGateway(name);
 	}
 
 	@Override
 	public void addGatewayInstance(VirtualGatewayInstance gateway) {
-		log.trace("A new virtual gateway {} created", gateway.getName());
+		log.info("A new virtual gateway {} created", gateway.getName());
 		l3manager.addVirtualGateway(gateway);
 	}
 
 	@Override
 	public VirtualGatewayInstance updateVirtualGateway(String name, MacAddress newMac) {
-		log.trace("Virtual gateway {} updated", name);
+		log.info("Virtual gateway {} updated", name);
 		return l3manager.updateVirtualGateway(name, newMac);
 	}
 
@@ -1664,25 +1675,25 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 
 	@Override
 	public void removeAllVirtualInterfaces(VirtualGatewayInstance gateway) {
-		log.trace("All virtual interfaces removed from gateway {}", gateway.getName());
+		log.info("All virtual interfaces removed from gateway {}", gateway.getName());
 		l3manager.removeAllVirtualInterfaces(gateway);
 	}
 
 	@Override
 	public boolean removeVirtualInterface(String interfaceName, VirtualGatewayInstance gateway) {
-		log.trace("Virtual gateway {} removed from gateway {}", interfaceName, gateway.getName());
+		log.info("Virtual gateway {} removed from gateway {}", interfaceName, gateway.getName());
 		return l3manager.removeVirtualInterface(interfaceName, gateway);
 	}
 
 	@Override
 	public void addVirtualInterface(VirtualGatewayInstance gateway, VirtualGatewayInterface intf) {
-		log.trace("A new virtual interface {} created for gateway {}", intf.getInterfaceName(), gateway.getName());
+		log.info("A new virtual interface {} created for gateway {}", intf.getInterfaceName(), gateway.getName());
 		l3manager.addVirtualInterface(gateway, intf);
 	}
 
 	@Override
 	public void updateVirtualInterface(VirtualGatewayInstance gateway, VirtualGatewayInterface intf) {
-		log.trace("Virtual interface {} in gateway {} updated ", intf.getInterfaceName(), gateway.getName());
+		log.info("Virtual interface {} in gateway {} updated ", intf.getInterfaceName(), gateway.getName());
 		l3manager.updateVirtualInterface(gateway, intf);
 	}
 
@@ -1781,7 +1792,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 		}
 
 		if (!instance.isPresent()) {
-			log.trace("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), outputPort);
+			log.info("Could not locate virtual gateway instance for DPID {}, port {}", sw.getId(), outputPort);
 			return false;
 		}
 
@@ -1805,7 +1816,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 					new Object[] { sw, outputPort, packetOut.build() });
 		}
 		messageDamper.write(sw, packetOut.build());
-		log.debug("Push packet out the last hop switch (true attachment point)");
+		log.info("Push packet out the last hop switch (true attachment point)");
 
 		return true;
 	}
@@ -1820,7 +1831,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule, IOF
 				}
 
 				if (!portsOnLinks.contains(ap.getPortId())) {
-					log.debug("Found 'true' attachment point of {}", ap);
+					log.info("Found 'true' attachment point of {}", ap);
 					return ap;
 				} else {
 					log.trace("Attachment point {} was not the 'true' attachment point", ap);

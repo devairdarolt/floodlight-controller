@@ -1,0 +1,4 @@
+
+# fazer a branch local retornar ao estado da branch remota
+    git reset --hard HEAD
+

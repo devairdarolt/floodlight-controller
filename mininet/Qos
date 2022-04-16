@@ -1,0 +1,36 @@
+#!/bin/bash
+
+## mostra os fluxos do switch s1
+ovs-vsctl dump-flows s1
+
+## print match flow from s1
+dump-flows SWITCH FLOW
+
+## Apaga os fluxos
+ovs-ofctl del-flows s1
+
+##lista os qos existentes
+ovs-vsctl list qos
+
+# Remove a tabela QoS
+sudo ovs-vsctl --all destroy QoS
+
+# Remover todas as Queue
+ovs-vsctl -- --all destroy Queue
+
+# Quemover Queue através do id
+ovs-vsctl  destroy Queue uuid1 uuid2
+
+
+
+# Criando Queues para usar com o floodlight
+ovs-vsctl -- set Port s1-eth1 qos=@newqos -- 												# cria um qos para s1-eth1
+--id=@newqos create QoS type=linux-htb other-config:max-rate=1000000000 queues=0=@q0 --   	# Configura limite maximo para 1 GBs
+--id=@q0 create Queue other-config:min-rate=4000000 other-config:max-rate=4000000			# cria uma queue de 4 Mbs --- Tudo que for colocado nessa lista terá a largura de banda limitada a 4Mbs
+
+#ovs-vsctl -- set Port s1-eth1 qos=@newqos -- --id=@newqos create QoS type=linux-htb other-config:max-rate=1000000000 queues=0=@q0,1=@q1 -- --id=@q0 create Queue other-config:min-rate=100000000 other-config:max-rate=100000000 -- --id=@q1 create Queue other-config:min-rate=500000000
+ovs-vsctl -- set Port s1-eth1 qos=@newqos -- set Port s1-eth2 qos=@newqos       								#Cria um qos para porta 1 e para a porta 2
+-- --id=@newqos   create   QoS    type=linux-htb    other-con‐fig:max-rate=1000000000 queues=0=@q0,1=@q1  		#Cria duas queue com 1 GBs
+-- --id=@q0   create   Queue   other-config:min-rate=100000000 other-config:max-rate=100000000  				#configura queue0 para 100 MBs
+-- --id=@q1 create Queue other-config:min-rate=500000000														#configura queue1 para 500 MBs
+

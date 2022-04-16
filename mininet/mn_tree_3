@@ -1,0 +1,5 @@
+#!/bin/bash
+
+sudo mn --controller=remote,ip=192.168.1.216,port=6653  --switch=ovsk,protocols=OpenFlow14 --topo=tree,depth=3,fanout=2 --mac
+
+sudo mn -c

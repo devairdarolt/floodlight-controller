@@ -4,7 +4,7 @@
  * O obejtivo dessa classe é fazer um breve tutorial de implementação das interfaces IOFMessageListener e IFloodlightProviderService 
  * 
  */
-package net.floodlightcontroller.deva;
+package net.floodlightcontroller.tutorial.one;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -35,17 +35,7 @@ import org.slf4j.LoggerFactory;
 
 public class MACTracker implements IOFMessageListener, IFloodlightModule {
 
-	// ANSI escape code para colorir o log
-	public static final String ANSI_RESET = "\u001B[0m";
-	public static final String ANSI_BLACK = "\u001B[30m";
-	public static final String ANSI_RED = "\u001B[31m";
-	public static final String ANSI_GREEN = "\u001B[32m";
-	public static final String ANSI_YELLOW = "\u001B[33m";
-	public static final String ANSI_BLUE = "\u001B[34m";
-	public static final String ANSI_PURPLE = "\u001B[35m";
-	public static final String ANSI_CYAN = "\u001B[36m";
-	public static final String ANSI_WHITE = "\u001B[37m";
-
+	
 	protected IFloodlightProviderService floodlightProviderService;
 	protected Set<String> listaMACs;
 	protected static Logger logger;
@@ -91,13 +81,11 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule {
 	 */
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
-		floodlightProviderService.addOFMessageListener(OFType.PACKET_IN, this);
-		stringBuilder = new StringBuilder();
-		stringBuilder.append(ANSI_YELLOW);
-		stringBuilder.append("MACTracker adicionado a lista de listners para PACKET_IN\n");
-		stringBuilder.append(ANSI_RESET);
-		logger.info(stringBuilder.toString());
-		// agora MACTracker será avisado toda vez que um PACKET_IN chegar ao controlador
+		floodlightProviderService.addOFMessageListener(OFType.PACKET_IN, this);		
+		
+		
+		logger.info("MACTracker adicionado a lista de listners para PACKET_IN");
+		
 
 	}
 
@@ -129,12 +117,9 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule {
 		// log.
 		if (!listaMACs.contains(srcMACHash)) {
 			listaMACs.add(srcMACHash);
-			stringBuilder = new StringBuilder();
-			stringBuilder.append(ANSI_BLUE);
-			stringBuilder.append("MAC: " + eth.getSourceMACAddress().toString() + " visto no Switch: "
-					+ sw.getId().toString() + " Total:" + listaMACs.size() + "\n");
-			stringBuilder.append(ANSI_RESET);
-			logger.info(stringBuilder.toString());
+			
+			logger.info("MAC: " + eth.getSourceMACAddress().toString() + " visto no Switch: "
+					+ sw.getId().toString() + " Total:" + listaMACs.size());
 		}
 
 		return Command.CONTINUE; // Comando para que a menssagem constinue sendo processada por outros listners
