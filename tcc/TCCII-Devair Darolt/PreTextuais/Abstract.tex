@@ -1,0 +1,18 @@
+% ---
+% Abstract
+% ---
+
+% resumo em inglês
+\begin{resumo}[Abstract]
+ \begin{otherlanguage*}{english}
+
+The Software Defined Networks (SDN)  paradigm has recently been widespread as one of the possibilities to overcome the inflexibility of communication resources, especially the Internet. This paradigm, started as an academic experiment, has been used in industrial scenarios (\textit{e.g.}, cloud computing providers, content providers) due to the ease of managing and implementing innovations. The verticalization that exists in conventional networks has limited the development of protocols and architectural proposals for decades. SDN has overcome this limitation by separating control and data planes in communication devices. 
+The control plane is managed by components connected to the infrastructure (controllers) that act on the forwarding devices through abstractions. This flexible scenario allows the definition of new control and flow forwarding policies by the administrator, implemented directly in the controller. 
+The aim of this work is to carry out a comparative study between flow forwarding policies in SDN. Among several existing strategies, 4 of the most commonly used were selected. The first is the Round-Robin policy, which uses the circular queuing strategy to switch between existing multiple paths. 
+The second policy is the shortest reactive path, in which the controller chooses at each hop the next switch to be sent, in order to use the path with the least number of hops. 
+The third policy used was the proactive shortest path, in which the controller selects the path with the least amount of hops, but configuring all switches that belong to the path. 
+Finally, the least traffic policy, which allows the controller to use the switch port information to find the path with the least bandwidth used. The SDN scenario will be performed with the Mininet emulator and the forwarding algorithms will be implemented in the Floodlight controller and analyzed through the performance of the Numerical Aerodynamic Simulation~(NAS) tools.
+
+   \textbf{Keywords}: Floodlight, OpenFlow, Mininet, SDN, Traffic Engineering.
+ \end{otherlanguage*}
+\end{resumo}

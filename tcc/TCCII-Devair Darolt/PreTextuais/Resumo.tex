@@ -1,0 +1,17 @@
+% ---
+% RESUMOS
+% ---
+
+% resumo em português
+\setlength{\absparsep}{18pt} % ajusta o espaçamento dos parágrafos do resumo
+\begin{resumo}
+O paradigma de Redes Definidas por Software (SDN) foi recentemente difundido como uma das possibilidades para sobrepor a inflexibilidade dos recursos de comunicação, sobretudo da Internet.
+Este paradigma, iniciado como um experimento acadêmico, vem sendo utilizado em cenários industriais (\textit{e.g.,} provedores de nuvens computacionais, provedores de conteúdo) pela facilidade de gerenciamento e implantação de inovações. 
+A verticalização existente em redes convencionais limitou o desenvolvimento de protocolos e propostas arquiteturais durante décadas.
+Em suma, SDN ultrapassou essa limitação através da separação dos planos de controle e dados nos dispositivos de comunicação.
+O gerenciamento do plano de controle fica a cargo de componentes conectados à infraestrutura (controladores) que atuam sobre os dispositivos de encaminhamento através de abstrações.
+Esse cenário flexível, permite a definição de novas políticas de controle e encaminhamento de fluxos por parte do administrador, implementadas diretamente no controlador. 
+O alvo do presente trabalho é realizar um estudo comparativo entre políticas de encaminhamento de fluxos em SDN. Entre diversas estratégias existentes foram selecionadas 4 das mais comuns utilizadas. A primeira é a política de \textit{round-robin} (RR), que usa a estratégia de fila circular para alternar entre os múltiplos caminhos existentes. A segunda política é a do Caminho Mais Curto Reativo (CMCR), na qual, o controlador escolhe a cada salto o próximo comutador a ser enviado, de modo a utilizar o caminho de menor quantidade de saltos. A terceira política utilizada foi o Caminho Mais Curto Proativo  (CMCP) que implementa a lógica de menor quantidade de saltos, porém configurando todos os comutadores de uma única vez. Por último, a política de Caminho de Menor Tráfego (CMT) permite o controlador utiliza as informações de portas dos comutadores para encontrar o caminho com menor largura de banda utilizada. O cenário SDN será realizado com o emulador \textit{Mininet} enquanto os algoritmos de encaminhamento serão implementados no controlador \textit{Floodlight} e estudados com análise do desempenho da ferramenta \textit{Numerical Aerodynamic Simulation} (NAS).
+
+ \textbf{Palavras-chave}: Engenharia de Tráfego, Floodlight, OpenFlow, Mininet, SDN.
+\end{resumo}

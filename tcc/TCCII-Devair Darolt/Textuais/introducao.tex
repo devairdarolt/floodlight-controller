@@ -1,0 +1,83 @@
+\chapter{Introdução}
+\label{cap:introducao}
+
+O gerenciamento de redes convencionais baseadas no \emph{Internet Protocol} (IP) é um desafio para os administradores de redes.
+Para configurar diretrizes de segurança e encaminhamento de pacotes, é necessário utilizar instruções de baixo nível especificadas pelos fornecedores dos dispositivos. 
+Tradicionalmente, cada dispositivo de rede possui uma camada de dados e uma camada de controle implementadas como parte do equipamento, tornando essas infraestruturas rígidas, com pouca possibilidade de inovação~\cite{kim2013}. Redes com alta complexidade de formulação e manutenção geralmente necessitam de intervenções manuais significativas em sua gestão, estando mais propensas a falhas e por isso são mais difíceis de serem atualizadas e gerenciadas~\cite{benson2009}.
+
+O conceito de Redes Definidas por Software (\textit{Software-Defined Networking} -- SDN), primeiramente desenvolvido como um experimento acadêmico, tornou-se uma tecnologia emergente para evolução das redes de computadores.
+Em suma, SDN introduziu a separação entre o plano de controle e o plano de dados, transformando os componentes de comunicação em simples dispositivos de encaminhamento. 
+Neste cenário, a configuração das políticas de encaminhamento e balanceamento de carga pode ser implementada sobre um controlador logicamente centralizado, denominado \emph{Network Operation System} (NOS) ~\cite{kreutz2015}.
+
+A separação dos planos nos dispositivos de encaminhamento oferece uma série de benefícios para pesquisadores e administradores: \textit{(i)}~Ambiente simplificado e menos propenso a erros ocasionados por modificações em políticas. Ainda, as ações de configuração são realizadas por interfaces pré-definidas que abstraem os recursos reais. \textit{(ii)}~Algoritmos de controle podem automaticamente reagir a mudanças no estado da rede e  manter as políticas de alto nível intactas. Assim, alterações podem ser realizadas nas tabelas de fluxo dos dispositivos de encaminhamento sem impactar a aplicação final. \textit{(iii)}~A centralização da lógica de controle em um controlador com conhecimento global do estado da rede simplifica o desenvolvimento de funcionalidades de gerenciamento. \textit{(iv)}~Redução de ~\textit{vendor lock-in} possibilita maior integração de equipamentos de diferentes fabricantes.
+
+Em SDN, os dispositivos de encaminhamento realizam operações elementares, baseadas em regras para determinar ações sobre os pacotes recebidos. 
+Essas instruções são instaladas nos dispositivos pela interface \emph{southbound}\footnote[1]{~\textit{API} responsável pela comunicação com os dispositivos de encaminhamento de forma padronizada} (e.g., OpenFlow, ForCES).
+Nesse cenário, o plano de dados é representado pelos dispositivos de encaminhamentos que são interconectados entre si formando uma infraestrutura SDN. 
+Já o plano de controle contém as camadas responsáveis pelas informações da infraestrutura de rede e possui uma série de elementos que programam o comportamento dos dispositivos de encaminhamento. Toda lógica de controle reside nesse plano. A interface \emph{northbound} realiza a abstração das instruções de baixo nível utilizadas pela interface \emph{southbound} e as oferecem como serviços ao plano de gerenciamento. O plano de gerenciamento contém o conjunto de aplicações que aproveitam as funcionalidades fornecidas pela interface \emph{northbound} para fazer o controle lógico da rede~\cite{kreutz2015}, tal como encaminhamento, ~\emph{firewall}, balanceamento de carga e monitoramento.
+
+%O plano de controle pode ser implementado de maneira centralizada ou distribuída~\cite{guedes:2}.
+%Na centralizada, um único controlador é capaz de gerenciar toda a infraestrutura da rede, entretanto, estando propenso a falhas que inviabilizariam a utilização da arquitetura. Embora centralizado, esse modelo é capaz de atender redes de menor porte como \textit{datacenters} de tamanho médio e redes privadas.
+%Por sua vez, uma SDN que possua um sistema distribuído de controle é mais tolerante a falhas e pode ser escalada para redes de alta densidade de dispositivos. 
+%Em nuvens computacionais, com vários \textit{datacenters} geograficamente distantes, é utilizado o plano de controle híbrido e hierárquico, ou seja, uma combinação de soluções centralizadas e distribuídas. 
+
+Diferente das redes convencionais, SDN trabalha com políticas de encaminhamento de fluxos ao invés de pacotes. Um fluxo é uma sequência de pacotes que possuem características semelhantes, tais como endereços de origem, destino, identificadores de \emph{Virtual Local Area Network} (VLAN) , protocolo, número da porta de origem e destino. 
+As informações são combinadas compondo uma tupla que representa o fluxo em questão.
+Assim, os algoritmos de encaminhamento são aplicações executadas no plano de controle que utilizam essas tuplas com o objetivo de configurar os dispositivos SDN, para que estes realizem operações elementares de encaminhamento com base em regras de suas tabelas de fluxos, de modo a estabelecer a comunicação entre origem e destino. 
+
+%///////////////////////////////////////////////////////////////////////////////////
+\section{Objetivo}
+\label{sec:objetivo}
+Diante da motivação apresentada, o presente trabalho investiga o comportamento de algoritmos de encaminho de fluxos em SDN, realizando uma análise experimental comparativa. Para que o objetivo proposto neste trabalho seja realizado, os seguintes objetivos específicos devem ser atingidos:
+\begin{itemize}
+    \item Investigar o paradigma SDN;
+    \item Revisar algoritmos de encaminhamento existentes e seus objetivos;
+    \item Estudar o funcionamento do emulador  \textit{Mininet} e do controlador \textit{Floodlight};
+    \item Implementar os algoritmos de encaminhamento no controlador \textit{Floodlight};
+    \item Definir as métricas para representar o desempenho da rede;
+    \item Coletar dados experimentais; e
+    \item Realizar uma análise dos resultados obtidos.
+    
+\end{itemize}
+%////////////////////////////////////////////////////////////////////////////////////
+% \section{Metodologia}
+% \label{sec:metodologia}
+% % Para alcançar os objetivos propostos, este trabalho será desenvolvido em 8 (oito) etapas principais. Inicialmente será realizado um estudo sobre as arquiteturas dos SDNs. Em um segundo momento, uma revisão sobre algoritmos de grafos com controle de fluxo. A terceira etapa consiste em realizar um estudo sobre o funcionamento do controlador lógico SDN Floodlight.
+% % A quarta etapa abordará o estudo das politicas de controle de fluxo no Floodlight.
+% % A quinta etapa corresponde a implementação dos algoritmos de encaminhamento.
+% % A sexta etapa consiste em um estudo sobre o comportamento da infraestrutura virtual gerada na ferramenta Mininet.
+% % Por fim, uma validação experimental sera feita em forma de um comparativo entre tais rotinas de controle de fluxo.
+
+% Dessa forma, o processo de desenvolvimento deste trabalho envolverá as seguintes etapas:
+
+% \begin{itemize}
+%     \item TCC 1:
+%     \begin{enumerate}
+%        	\item Revisão de literatura sobre a arquitetura SDN e protocolo OpenFlow;
+% 		\item Revisão de literatura sobre algoritmos de controle de fluxos e sua representação em grafos;
+% 		\item Revisão de literatura sobre arquitetura do controlador Floodlight;
+% 		\item Estudo sobre implementação das políticas de encaminhamento de fluxos no controlador Floodlight;
+% 		\item Definição dos algoritmos que serão comparados;
+% 		\item Escrita do TCC-I;
+%     \end{enumerate}
+    
+%     \item TCC 2:
+%     \begin{enumerate}
+%         \setcounter{enumi}{6}
+%         \item Estudo sobre o emulador Mininet;
+% 		\item Implementação dos algoritmos selecionados;
+% 		\item Definição das métricas de comparação;
+% 		\item Análise experimental;
+% 		\item Escrita do TCC-II;
+%     \end{enumerate}
+% \end{itemize}
+
+%////////////////////////////////////////////////////////////////////////////////////
+\section{Estrutura do Trabalho}
+\label{sec:estrutura}
+O texto está estruturado da seguinte forma: O Capítulo ~\ref{cap:revisao} revisa os conceitos e tecnologias relacionadas com SDN. São revisadas as definições de fluxos de pacotes, OpenFlow, SDN, entre outros elementos necessários para contextualização do trabalho. 
+O Capítulo \ref{cap:algoritimos} revisa de forma detalhada a estratégia de funcionamento das políticas de controle de fluxos escolhidas para o presente estudo.
+O Capítulo~\ref{cap:protocoleo_experimental} faz uma revisão sobre o emulador utilizado para a simulação, apresentando junto a topologia da rede de múltiplos caminhos criada para o estudo das políticas. Este capítulo faz também uma breve introdução ao \textit{software} para avaliação de desempenho de infraestruturas de comunicação.
+O capítulo \ref{cap:analise_resultados} busca apresentar os resultados obtidos pelas aplicações da ferramenta de avaliação utilizada para os testes.
+O capítulo \ref{cap:conclusao} faz uma conclusão sobre o trabalho apontando possíveis desenvolvimentos futuros.
+
